@@ -325,3 +325,56 @@ dialog input {
 .dialog-actions .btn-inline { margin-top: 0; }
 .snmp-info { font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
 .snmp-info b { color: var(--accent); }
+
+/* ============================== v3 =================================== */
+
+/* Ungespeichert-Zustand */
+.grid.unsaved .card { border-color: var(--warn); }
+.save-bar {
+  margin-top: 12px;
+  background: var(--panel);
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.save-bar-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px; font-size: 12px; color: var(--text-dim);
+}
+.unsaved-badge {
+  background: var(--warn); color: #1a1405;
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  padding: 3px 8px; border-radius: 4px;
+}
+.save-bar .btn-primary { padding: 9px 16px; }
+
+/* Dosen-Detail */
+.detail-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;
+}
+.detail-wide { grid-column: 1 / -1; }
+.detail-grid input {
+  width: 100%; background: #0d1512; border: 1px solid var(--panel-edge);
+  color: var(--text); padding: 8px 10px; border-radius: 4px; font-family: var(--mono);
+}
+.detail-actions { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+.detail-actions .btn-inline { margin-top: 0; }
+.outlet-patch { color: var(--text-dim); font-size: 11px; }
+
+/* Port-Aktionen */
+.pa-hint { color: var(--text-dim); font-size: 13px; line-height: 1.6; }
+.pa-state { font-size: 13px; line-height: 1.7; margin-bottom: 10px; }
+.pa-state b { color: var(--accent); }
+.pa-warn { color: var(--warn); font-size: 12px; line-height: 1.6; }
+.vlan-diff { font-size: 12px; color: var(--warn); margin-top: 8px; line-height: 1.6; }
+#tab-portaktionen input {
+  width: 100%; background: #0d1512; border: 1px solid var(--panel-edge);
+  color: var(--text); padding: 8px 10px; border-radius: 4px; font-family: var(--mono);
+}
+.btn-danger {
+  background: var(--bad); color: #1a0505;
+  border: none; font-family: var(--mono); font-weight: 700;
+  letter-spacing: 0.5px; padding: 11px 16px; border-radius: 6px; cursor: pointer;
+  font-size: 13px;
+}
+.btn-danger:disabled { opacity: 0.4; cursor: default; }

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "data" / "netdiag.db"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 DEFAULT_DEVICE_TYPES = [
     ("PC", "🖥"),
@@ -41,6 +41,14 @@ def init_db():
     if version >= SCHEMA_VERSION:
         conn.close()
         return
+    if version == 1:
+        # Migration v1 -> v2: Patchfeld-Felder an der Dose
+        conn.execute("ALTER TABLE outlets ADD COLUMN patch_panel_name TEXT")
+        conn.execute("ALTER TABLE outlets ADD COLUMN patch_panel_port TEXT")
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
+        conn.close()
+        return
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS floors (
@@ -64,6 +72,8 @@ def init_db():
             room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
             label TEXT NOT NULL COLLATE NOCASE,
             device_type_id INTEGER REFERENCES device_types(id) ON DELETE SET NULL,
+            patch_panel_name TEXT,
+            patch_panel_port TEXT,
             notes TEXT,
             UNIQUE(room_id, label)
         );

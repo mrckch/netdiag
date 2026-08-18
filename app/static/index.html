@@ -16,26 +16,13 @@
       <nav class="tabs">
         <button class="tab active" data-tab="messen">MESSEN</button>
         <button class="tab" data-tab="kataster">KATASTER</button>
+        <button class="tab" data-tab="portaktionen">PORT-AKTIONEN</button>
         <button class="tab" data-tab="verwaltung">VERWALTUNG</button>
       </nav>
     </header>
 
     <!-- ======================= MESSEN ======================= -->
     <section id="tab-messen" class="tab-panel active">
-
-      <div class="outlet-picker card">
-        <div class="card-head">DOSE (optional — leer = freie Messung)</div>
-        <div class="picker-row">
-          <select id="pickFloor"><option value="">Etage…</option></select>
-          <select id="pickRoom" disabled><option value="">Raum…</option></select>
-          <select id="pickOutlet" disabled><option value="">Dose…</option></select>
-          <button id="quickAddOutlet" title="Neue Dose in diesem Raum anlegen" disabled>+ Dose</button>
-        </div>
-        <div class="picker-row device-row" id="deviceRow" style="display:none">
-          <span class="device-label">Gerät:</span>
-          <div id="deviceIcons" class="device-icons"></div>
-        </div>
-      </div>
 
       <div class="run-row">
         <div class="iface-select">
@@ -47,7 +34,7 @@
         <div id="runStatus" class="run-status">bereit</div>
       </div>
 
-      <main class="grid">
+      <main class="grid" id="resultGrid">
         <article class="card" id="card-link">
           <div class="card-head"><span class="led" data-led></span>LINK</div>
           <dl class="kv" data-body><dt>Status</dt><dd>—</dd><dt>Speed</dt><dd>—</dd><dt>Duplex</dt><dd>—</dd></dl>
@@ -55,7 +42,6 @@
         <article class="card" id="card-lldp">
           <div class="card-head"><span class="led" data-led></span>SWITCH (LLDP/CDP)</div>
           <dl class="kv" data-body><dt>Switch</dt><dd>—</dd><dt>Port</dt><dd>—</dd><dt>Mgmt-IP</dt><dd>—</dd></dl>
-          <button id="snmpBtn" class="btn-inline" style="display:none">Port-Description am Switch setzen…</button>
         </article>
         <article class="card" id="card-vlan">
           <div class="card-head"><span class="led" data-led></span>VLAN / 802.1X / STP</div>
@@ -73,15 +59,32 @@
           <div class="card-head"><span class="led" data-led></span>DURCHSATZ (iperf3)</div>
           <dl class="kv" data-body><dt>Download</dt><dd>—</dd><dt>Upload</dt><dd>—</dd><dt>Retransmits</dt><dd>—</dd></dl>
         </article>
-        <article class="card card-wide" id="card-scan">
-          <div class="card-head"><span class="led" data-led></span>NETZ-SCAN (manuell)</div>
-          <div class="scan-controls">
-            <input id="subnetInput" placeholder="z.B. 192.168.1.0/24">
-            <button id="runScan">SCAN</button>
-          </div>
-          <div id="scanResults" class="scan-results"></div>
-        </article>
       </main>
+
+      <!-- Zuordnen-Leiste: erscheint nur mit ungespeichertem Ergebnis -->
+      <div id="saveBar" class="save-bar" style="display:none">
+        <div class="save-bar-head">
+          <span class="unsaved-badge">UNGESPEICHERT</span>
+          <span>Diesem Ort zuordnen &amp; speichern:</span>
+        </div>
+        <div class="picker-row">
+          <select id="pickFloor"><option value="">Etage…</option></select>
+          <select id="pickRoom" disabled><option value="">Raum…</option></select>
+          <select id="pickOutlet" disabled><option value="">Dose…</option></select>
+          <button id="quickAddOutlet" disabled>+ Dose</button>
+          <button id="saveMeasurement" class="btn-primary">SPEICHERN</button>
+        </div>
+        <div id="saveStatus" class="run-status"></div>
+      </div>
+
+      <article class="card card-wide" id="card-scan" style="margin-top:12px">
+        <div class="card-head"><span class="led" data-led></span>NETZ-SCAN (manuell, wird nicht gespeichert)</div>
+        <div class="scan-controls">
+          <input id="subnetInput" placeholder="z.B. 192.168.1.0/24">
+          <button id="runScan">SCAN</button>
+        </div>
+        <div id="scanResults" class="scan-results"></div>
+      </article>
     </section>
 
     <!-- ======================= KATASTER ======================= -->
@@ -98,9 +101,83 @@
 
       <div id="tree" class="tree"></div>
 
-      <div id="historyPanel" class="card" style="display:none">
-        <div class="card-head" id="historyTitle">HISTORIE</div>
+      <!-- Dosen-Detail -->
+      <div id="outletDetail" class="card" style="display:none">
+        <div class="card-head" id="outletDetailTitle">DOSE</div>
+        <div class="detail-grid">
+          <div>
+            <label class="setting-label">Patchfeld</label>
+            <input id="detailPatchName" placeholder="z.B. PF-EG-01">
+          </div>
+          <div>
+            <label class="setting-label">Patchfeld-Port</label>
+            <input id="detailPatchPort" placeholder="z.B. 12">
+          </div>
+          <div class="detail-wide">
+            <label class="setting-label">Notizen</label>
+            <input id="detailNotes" placeholder="…">
+          </div>
+        </div>
+        <div class="picker-row device-row">
+          <span class="device-label">Gerät:</span>
+          <div id="detailDeviceIcons" class="device-icons"></div>
+        </div>
+        <div class="detail-actions">
+          <button id="detailSave" class="btn-secondary">ÄNDERUNGEN SPEICHERN</button>
+          <button id="detailDelete" class="btn-inline">Dose löschen</button>
+          <span id="detailStatus" class="run-status"></span>
+        </div>
+        <div class="card-head" style="margin-top:16px">HISTORIE</div>
         <div id="historyList"></div>
+      </div>
+    </section>
+
+    <!-- ======================= PORT-AKTIONEN ======================= -->
+    <section id="tab-portaktionen" class="tab-panel">
+      <div id="paEmpty" class="card">
+        <div class="card-head">KEIN PORT ERKANNT</div>
+        <p class="pa-hint">Erst im Bereich MESSEN einen Autotest ausführen.
+        Port-Aktionen beziehen sich immer auf den zuletzt erkannten Switch-Port.</p>
+      </div>
+
+      <div id="paContent" style="display:none">
+        <div class="card">
+          <div class="card-head">AKTUELLER PORT (aus letztem Autotest)</div>
+          <dl class="kv">
+            <dt>Switch</dt><dd id="paSwitch">—</dd>
+            <dt>Port</dt><dd id="paPort">—</dd>
+            <dt>Mgmt-IP</dt><dd id="paIp">—</dd>
+          </dl>
+        </div>
+
+        <div class="grid" style="margin-top:12px">
+          <article class="card">
+            <div class="card-head">PORT-DESCRIPTION SETZEN</div>
+            <div id="descrState" class="pa-state">—</div>
+            <button id="descrPreview" class="btn-secondary">VORSCHAU LADEN</button>
+            <div id="descrEdit" style="display:none">
+              <label class="setting-label">Neue Description</label>
+              <input id="descrInput">
+              <button id="descrWrite" class="btn-primary" style="margin-top:10px">AM SWITCH SCHREIBEN</button>
+            </div>
+            <div id="descrStatus" class="run-status"></div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">⚠ VLAN SETZEN (EXPERIMENTELL)</div>
+            <div id="vlanState" class="pa-state">—</div>
+            <button id="vlanLoad" class="btn-secondary">AKTUELLEN ZUSTAND LADEN</button>
+            <div id="vlanEdit" style="display:none">
+              <label class="setting-label">Untagged VLAN (PVID)</label>
+              <input id="vlanPvid" type="number" min="1" max="4094">
+              <label class="setting-label">Tagged VLANs (kommagetrennt)</label>
+              <input id="vlanTagged" placeholder="z.B. 20,30,99">
+              <div id="vlanDiff" class="vlan-diff"></div>
+              <button id="vlanWrite" class="btn-danger" style="margin-top:10px">PORT UMKONFIGURIEREN…</button>
+            </div>
+            <div id="vlanStatus" class="run-status"></div>
+          </article>
+        </div>
       </div>
     </section>
 
@@ -138,7 +215,7 @@
 
         <article class="card">
           <div class="card-head">EINSTELLUNGEN</div>
-          <label class="setting-label">iperf3-Server (IP/Host)</label>
+          <label class="setting-label">iperf3-Server (LXC, trunked)</label>
           <input id="setIperf" placeholder="z.B. 10.0.10.5">
           <label class="setting-label">SNMP Community (v2c, write)</label>
           <input id="setCommunity" type="password" placeholder="Community-String">
@@ -179,17 +256,18 @@
     </div>
   </dialog>
 
-  <!-- SNMP-Dialog -->
-  <dialog id="snmpDialog">
-    <h3>Port-Description setzen</h3>
-    <div id="snmpInfo" class="snmp-info">…</div>
-    <label class="setting-label">Description</label>
-    <input id="snmpDescr">
+  <!-- VLAN-Bestätigungsdialog -->
+  <dialog id="vlanConfirmDialog">
+    <h3>⚠ Port wird sofort umkonfiguriert</h3>
+    <div id="vlanConfirmDiff" class="snmp-info"></div>
+    <p class="pa-warn">Das angeschlossene Gerät kann die Verbindung sofort verlieren.
+    Falls dieses Netbook über denselben Port verbunden ist, bricht auch die
+    Verbindung zu netdiag ab.</p>
+    <label class="check-row"><input type="checkbox" id="vlanConfirmCheck"> Ich habe den Diff geprüft</label>
     <div class="dialog-actions">
-      <button id="snmpCancel" class="btn-inline">Abbrechen</button>
-      <button id="snmpConfirm" class="btn-primary" disabled>AM SWITCH SCHREIBEN</button>
+      <button id="vlanConfirmCancel" class="btn-inline">Abbrechen</button>
+      <button id="vlanConfirmGo" class="btn-danger" disabled>JETZT SCHREIBEN</button>
     </div>
-    <div id="snmpStatus" class="run-status"></div>
   </dialog>
 
   <script src="/static/app.js"></script>

@@ -26,16 +26,27 @@ auf den Switch.
 | Durchsatz   | `iperf3` gegen eigenen Server (beide Richtungen) | Mbit/s Down/Up, Retransmits |
 | Netz-Scan   | `nmap -sn`                                 | Aktive Geräte im Segment |
 
+### Schnelltest-Workflow (v3)
+Messen und Speichern sind getrennt: Autotest/iperf laufen zunächst ohne
+DB-Eintrag (Aufräum-Modus). Erst der Speichern-Klick — mit sticky
+vorausgewählter Etage/Raum/Dose als Ein-Klick — legt die Messung ab.
+Messen ist nur über LAN-Interfaces möglich (WLAN wird ausgefiltert).
+
 ### Kabelkataster
 - Etagen → Räume → Dosen anlegen und verwalten
-- Jede Messung wird der Dose zugeordnet (oder frei gemessen und nachträglich zugeordnet)
+- **Patchfeld-Name und -Port pro Dose** — dokumentiert die komplette Strecke
+  Dose → Patchfeld → Switch (Switch+Port kommen automatisch aus LLDP/CDP)
 - Komplette Mess-Historie pro Dose mit Änderungs-Hinweis (VLAN/Speed/Switch geändert)
 - Gerätetyp pro Dose per Icon-Klick (PC, Beamer, AppleTV, Drucker, AP, … — erweiterbar)
+- Nachträgliches Zuordnen frei gespeicherter Messungen
 
 ### Integration & Export
-- **SNMP-Write (v2c):** Port-Description (`ifAlias`) direkt am Switch setzen —
-  Switch und Port kommen aus dem LLDP-Ergebnis, die Description aus einem
-  Template (`{raum}-{dose} {geraet}`), mit Vorschau vor dem Schreiben
+- **Port-Aktionen (SNMP v2c),** strikt gebunden an den zuletzt gemessenen Port:
+  - **Description setzen** (`ifAlias`) — Vorschlag aus Template
+    (`{raum}-{dose} {geraet}`), Vorschau vor dem Schreiben
+  - **VLAN setzen** (PVID + tagged VLANs via Q-BRIDGE-MIB) — mit
+    Zustandsanzeige, Diff und doppelter Bestätigung. **Experimentell:**
+    vor produktivem Einsatz gegen die konkreten Switch-Modelle verifizieren
 - **XLSX-Export:** sortiert nach Etage → Raum → Dose, Spalten frei wählbar,
   letzte Messung oder komplette Historie, optionaler Zeitraumfilter
 - **DB-Backup/-Restore** direkt aus der UI (SQLite-Snapshot via `VACUUM INTO`,

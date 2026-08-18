@@ -1,5 +1,5 @@
 // ===================================================================
-// netdiag v2 Frontend — Vanilla JS, kein Build-Step
+// netdiag v3 Frontend — Schnelltest-Workflow, 4 Tabs
 // ===================================================================
 
 const $ = (sel) => document.querySelector(sel);
@@ -14,6 +14,14 @@ async function api(path, opts = {}) {
   }
   return res.json();
 }
+const postJson = (path, body) => api(path, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+const patchJson = (path, body) => api(path, {
+  method: "PATCH", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
 
 function fmtTs(unix) {
   return new Date(unix * 1000).toLocaleString("de-DE", {
@@ -21,6 +29,19 @@ function fmtTs(unix) {
     hour: "2-digit", minute: "2-digit",
   });
 }
+
+// ---------------------------------------------------------------- State
+
+let TREE = { floors: [] };
+let DEVICE_TYPES = [];
+let PENDING = null;          // { kind, result } — ungespeichertes Ergebnis
+let LAST_SWITCH = null;      // { host, portName } aus letztem Autotest (für Port-Aktionen)
+let PA_IFINDEX = null;       // aufgelöster ifIndex im Port-Aktionen-Tab
+let VLAN_CURRENT = null;     // zuletzt gelesener VLAN-Zustand
+let CURRENT_OUTLET = null;   // im Kataster-Detail geöffnete Dose
+
+async function loadTree() { TREE = await api("/api/tree"); }
+async function loadDeviceTypes() { DEVICE_TYPES = (await api("/api/device_types")).device_types; }
 
 // ---------------------------------------------------------------- Tabs
 
@@ -31,22 +52,10 @@ $$(".tab").forEach((btn) => {
     btn.classList.add("active");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
     if (btn.dataset.tab === "kataster") loadKataster();
+    if (btn.dataset.tab === "portaktionen") renderPortAktionen();
     if (btn.dataset.tab === "verwaltung") loadVerwaltung();
   });
 });
-
-// ------------------------------------------------- Globale Stammdaten
-
-let TREE = { floors: [] };
-let DEVICE_TYPES = [];
-let LAST_AUTOTEST = null; // für SNMP-Button
-
-async function loadTree() {
-  TREE = await api("/api/tree");
-}
-async function loadDeviceTypes() {
-  DEVICE_TYPES = (await api("/api/device_types")).device_types;
-}
 
 // ------------------------------------------------- Messen: Interfaces
 
@@ -61,113 +70,11 @@ async function loadIfaces() {
   });
 }
 
-// ------------------------------------------- Messen: Dosen-Picker (sticky)
-
-const pickFloor = $("#pickFloor");
-const pickRoom = $("#pickRoom");
-const pickOutlet = $("#pickOutlet");
-
-function fillPicker() {
-  const prevFloor = pickFloor.value;
-  pickFloor.innerHTML = '<option value="">Etage…</option>';
-  TREE.floors.forEach((f) => {
-    const o = document.createElement("option");
-    o.value = f.id; o.textContent = f.name;
-    pickFloor.appendChild(o);
-  });
-  if (prevFloor && [...pickFloor.options].some((o) => o.value === prevFloor)) {
-    pickFloor.value = prevFloor;
-  }
-  fillRooms();
-}
-
-function fillRooms() {
-  const floor = TREE.floors.find((f) => f.id == pickFloor.value);
-  const prevRoom = pickRoom.value;
-  pickRoom.innerHTML = '<option value="">Raum…</option>';
-  pickRoom.disabled = !floor;
-  (floor?.rooms || []).forEach((r) => {
-    const o = document.createElement("option");
-    o.value = r.id; o.textContent = r.name;
-    pickRoom.appendChild(o);
-  });
-  if (prevRoom && [...pickRoom.options].some((o) => o.value === prevRoom)) {
-    pickRoom.value = prevRoom;
-  }
-  fillOutlets();
-}
-
-function fillOutlets() {
-  const floor = TREE.floors.find((f) => f.id == pickFloor.value);
-  const room = floor?.rooms.find((r) => r.id == pickRoom.value);
-  pickOutlet.innerHTML = '<option value="">Dose…</option>';
-  pickOutlet.disabled = !room;
-  $("#quickAddOutlet").disabled = !room;
-  (room?.outlets || []).forEach((o) => {
-    const opt = document.createElement("option");
-    opt.value = o.id;
-    opt.textContent = `${o.label}${o.device_icon ? " " + o.device_icon : ""}`;
-    pickOutlet.appendChild(opt);
-  });
-  updateDeviceRow();
-}
-
-function selectedOutlet() {
-  const floor = TREE.floors.find((f) => f.id == pickFloor.value);
-  const room = floor?.rooms.find((r) => r.id == pickRoom.value);
-  return room?.outlets.find((o) => o.id == pickOutlet.value) || null;
-}
-
-function updateDeviceRow() {
-  const outlet = selectedOutlet();
-  const row = $("#deviceRow");
-  if (!outlet) { row.style.display = "none"; return; }
-  row.style.display = "flex";
-  const box = $("#deviceIcons");
-  box.innerHTML = "";
-  DEVICE_TYPES.forEach((dt) => {
-    const btn = document.createElement("button");
-    btn.className = "device-icon" + (outlet.device_type_id === dt.id ? " active" : "");
-    btn.textContent = dt.icon;
-    btn.title = dt.name;
-    btn.addEventListener("click", async () => {
-      const newVal = outlet.device_type_id === dt.id ? null : dt.id;
-      await api(`/api/outlets/${outlet.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ device_type_id: newVal }),
-      });
-      await loadTree();
-      fillPicker();
-    });
-    box.appendChild(btn);
-  });
-}
-
-pickFloor.addEventListener("change", fillRooms);
-pickRoom.addEventListener("change", fillOutlets);
-pickOutlet.addEventListener("change", updateDeviceRow);
-
-$("#quickAddOutlet").addEventListener("click", async () => {
-  const label = prompt("Bezeichnung der neuen Dose (z.B. D03):");
-  if (!label) return;
-  try {
-    const created = await api("/api/outlets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ room_id: Number(pickRoom.value), label }),
-    });
-    await loadTree();
-    fillPicker();
-    pickOutlet.value = created.id;
-    updateDeviceRow();
-  } catch (e) { alert(e.message); }
-});
-
-// ------------------------------------------------- Messen: Ergebnis-UI
+// ------------------------------------------------- Ergebnis-UI-Helfer
 
 function setLed(cardId, state) {
   const led = document.querySelector(`#${cardId} [data-led]`);
+  if (!led) return;
   led.classList.remove("ok", "warn", "bad");
   if (state) led.classList.add(state);
 }
@@ -175,20 +82,23 @@ function setBody(cardId, rows) {
   const dds = document.querySelectorAll(`#${cardId} [data-body] dd`);
   rows.forEach((val, i) => { if (dds[i]) dds[i].textContent = val ?? "—"; });
 }
+function markUnsaved(on) {
+  $("#resultGrid").classList.toggle("unsaved", on);
+  $("#saveBar").style.display = on ? "block" : "none";
+  if (on) $("#saveStatus").textContent = "";
+}
+
+// ------------------------------------------------- Autotest (ohne Auto-Save)
 
 async function runAutotest() {
   const iface = $("#iface").value;
-  const outletId = pickOutlet.value || null;
   const btn = $("#runAutotest");
   btn.disabled = true;
   $("#runStatus").textContent = `teste ${iface} … (~10s)`;
-  $("#snmpBtn").style.display = "none";
 
   try {
-    let url = `/api/autotest?interface=${encodeURIComponent(iface)}`;
-    if (outletId) url += `&outlet_id=${outletId}`;
-    const data = await api(url);
-    LAST_AUTOTEST = data;
+    const data = await api(`/api/autotest?interface=${encodeURIComponent(iface)}`);
+    PENDING = { kind: "autotest", result: data };
 
     const link = data.link;
     setBody("card-link", [
@@ -207,7 +117,9 @@ async function runAutotest() {
       swPort || "—", swIp || "—",
     ]);
     setLed("card-lldp", swName ? "ok" : "warn");
-    if (swIp && swPort && outletId) $("#snmpBtn").style.display = "inline-block";
+    LAST_SWITCH = (swIp && swPort) ? { host: swIp, portName: swPort, name: swName } : null;
+    PA_IFINDEX = null;
+    VLAN_CURRENT = null;
 
     const sniff = data.sniff;
     setBody("card-vlan", [
@@ -233,8 +145,11 @@ async function runAutotest() {
       setLed("card-ping", "warn");
     }
 
-    const saved = outletId ? " · gespeichert ✓" : " · gespeichert (nicht zugeordnet)";
-    $("#runStatus").textContent = `fertig ${new Date().toLocaleTimeString()}${saved}`;
+    setBody("card-iperf", ["—", "—", "—"]);
+    setLed("card-iperf", null);
+
+    markUnsaved(true);
+    $("#runStatus").textContent = `fertig ${new Date().toLocaleTimeString()} — nicht gespeichert`;
   } catch (e) {
     $("#runStatus").textContent = `Fehler: ${e.message}`;
   } finally {
@@ -244,17 +159,15 @@ async function runAutotest() {
 $("#runAutotest").addEventListener("click", runAutotest);
 
 async function runIperf() {
-  const outletId = pickOutlet.value || null;
   const btn = $("#runIperf");
   btn.disabled = true;
   $("#runStatus").textContent = "iperf läuft … (~25s beide Richtungen)";
   try {
-    let url = `/api/iperf`;
-    if (outletId) url += `?outlet_id=${outletId}`;
-    const data = await api(url);
+    const data = await api("/api/iperf");
     if (data.error) {
       setBody("card-iperf", [`Fehler: ${data.error}`, "—", "—"]);
       setLed("card-iperf", "bad");
+      $("#runStatus").textContent = "iperf-Fehler";
     } else {
       setBody("card-iperf", [
         data.mbps_down != null ? `${data.mbps_down} Mbit/s` : "—",
@@ -262,8 +175,10 @@ async function runIperf() {
         data.retransmits ?? "—",
       ]);
       setLed("card-iperf", "ok");
+      PENDING = { kind: "iperf", result: data };
+      markUnsaved(true);
+      $("#runStatus").textContent = `iperf fertig ${new Date().toLocaleTimeString()} — nicht gespeichert`;
     }
-    $("#runStatus").textContent = `iperf fertig ${new Date().toLocaleTimeString()}`;
   } catch (e) {
     $("#runStatus").textContent = `Fehler: ${e.message}`;
   } finally {
@@ -272,7 +187,87 @@ async function runIperf() {
 }
 $("#runIperf").addEventListener("click", runIperf);
 
-// Netz-Scan
+// ------------------------------------------------- Zuordnen-Leiste (sticky)
+
+const pickFloor = $("#pickFloor");
+const pickRoom = $("#pickRoom");
+const pickOutlet = $("#pickOutlet");
+
+function fillPicker() {
+  const prevFloor = pickFloor.value;
+  pickFloor.innerHTML = '<option value="">Etage…</option>';
+  TREE.floors.forEach((f) => {
+    const o = document.createElement("option");
+    o.value = f.id; o.textContent = f.name;
+    pickFloor.appendChild(o);
+  });
+  if (prevFloor && [...pickFloor.options].some((o) => o.value === prevFloor)) pickFloor.value = prevFloor;
+  fillRooms();
+}
+function fillRooms() {
+  const floor = TREE.floors.find((f) => f.id == pickFloor.value);
+  const prevRoom = pickRoom.value;
+  pickRoom.innerHTML = '<option value="">Raum…</option>';
+  pickRoom.disabled = !floor;
+  (floor?.rooms || []).forEach((r) => {
+    const o = document.createElement("option");
+    o.value = r.id; o.textContent = r.name;
+    pickRoom.appendChild(o);
+  });
+  if (prevRoom && [...pickRoom.options].some((o) => o.value === prevRoom)) pickRoom.value = prevRoom;
+  fillOutlets();
+}
+function fillOutlets() {
+  const floor = TREE.floors.find((f) => f.id == pickFloor.value);
+  const room = floor?.rooms.find((r) => r.id == pickRoom.value);
+  const prevOutlet = pickOutlet.value;
+  pickOutlet.innerHTML = '<option value="">Dose…</option>';
+  pickOutlet.disabled = !room;
+  $("#quickAddOutlet").disabled = !room;
+  (room?.outlets || []).forEach((o) => {
+    const opt = document.createElement("option");
+    opt.value = o.id;
+    opt.textContent = `${o.label}${o.device_icon ? " " + o.device_icon : ""}`;
+    pickOutlet.appendChild(opt);
+  });
+  if (prevOutlet && [...pickOutlet.options].some((o) => o.value === prevOutlet)) pickOutlet.value = prevOutlet;
+}
+pickFloor.addEventListener("change", fillRooms);
+pickRoom.addEventListener("change", fillOutlets);
+
+$("#quickAddOutlet").addEventListener("click", async () => {
+  const label = prompt("Bezeichnung der neuen Dose (z.B. D03):");
+  if (!label) return;
+  try {
+    const created = await postJson("/api/outlets", { room_id: Number(pickRoom.value), label });
+    await loadTree();
+    fillPicker();
+    pickOutlet.value = created.id;
+  } catch (e) { alert(e.message); }
+});
+
+// Ein-Klick-Speichern: sticky Auswahl wird direkt übernommen
+$("#saveMeasurement").addEventListener("click", async () => {
+  if (!PENDING) return;
+  const outletId = pickOutlet.value ? Number(pickOutlet.value) : null;
+  try {
+    await postJson("/api/measurements", {
+      result: PENDING.result,
+      kind: PENDING.kind,
+      outlet_id: outletId,
+    });
+    PENDING = null;
+    markUnsaved(false);
+    $("#runStatus").textContent = outletId
+      ? "✓ gespeichert & zugeordnet"
+      : "✓ gespeichert (ohne Zuordnung — im Kataster nachholbar)";
+    loadTree().then(fillPicker);
+  } catch (e) {
+    $("#saveStatus").textContent = `Fehler: ${e.message}`;
+  }
+});
+
+// Netz-Scan (nie gespeichert)
 $("#runScan").addEventListener("click", async () => {
   const subnet = $("#subnetInput").value.trim();
   const box = $("#scanResults");
@@ -292,66 +287,15 @@ $("#runScan").addEventListener("click", async () => {
   } catch (e) { box.textContent = `Fehler: ${e.message}`; }
 });
 
-// ------------------------------------------------- SNMP-Dialog
-
-$("#snmpBtn").addEventListener("click", async () => {
-  const neighbor = LAST_AUTOTEST?.lldp?.neighbors?.[0];
-  const cdp = LAST_AUTOTEST?.sniff?.cdp;
-  const host = neighbor?.switch_mgmt_ip || cdp?.mgmt_ip;
-  const portName = neighbor?.port_id || cdp?.port_id;
-  const outletId = pickOutlet.value || null;
-  const dlg = $("#snmpDialog");
-  $("#snmpInfo").textContent = "löse ifIndex auf …";
-  $("#snmpConfirm").disabled = true;
-  $("#snmpStatus").textContent = "";
-  dlg.showModal();
-  try {
-    const prev = await api("/api/snmp/preview", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ host, port_name: portName, outlet_id: outletId ? Number(outletId) : null }),
-    });
-    if (prev.error) {
-      $("#snmpInfo").textContent = `Fehler: ${prev.error}`;
-      return;
-    }
-    $("#snmpInfo").innerHTML =
-      `Switch: <b>${host}</b><br>Port: <b>${prev.matched_name}</b> (ifIndex ${prev.ifindex})<br>` +
-      `Aktuelle Description: <b>${prev.current_description ?? "(leer)"}</b>`;
-    $("#snmpDescr").value = prev.proposed_description || "";
-    $("#snmpConfirm").disabled = false;
-    $("#snmpConfirm").onclick = async () => {
-      $("#snmpConfirm").disabled = true;
-      $("#snmpStatus").textContent = "schreibe …";
-      try {
-        const res = await api("/api/snmp/write", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ host, ifindex: prev.ifindex, description: $("#snmpDescr").value }),
-        });
-        $("#snmpStatus").textContent = res.success ? "✓ geschrieben" : `Fehler: ${res.error}`;
-        if (res.success) setTimeout(() => dlg.close(), 1200);
-      } catch (e) {
-        $("#snmpStatus").textContent = `Fehler: ${e.message}`;
-      } finally {
-        $("#snmpConfirm").disabled = false;
-      }
-    };
-  } catch (e) {
-    $("#snmpInfo").textContent = `Fehler: ${e.message}`;
-  }
-});
-$("#snmpCancel").addEventListener("click", () => $("#snmpDialog").close());
-
 // ------------------------------------------------- Kataster
 
 async function loadKataster() {
   await loadTree();
+  await loadDeviceTypes();
   const tree = $("#tree");
   tree.innerHTML = "";
-  $("#historyPanel").style.display = "none";
+  $("#outletDetail").style.display = "none";
 
-  // ungebundene Messungen
   const un = await api("/api/measurements?unassigned=true");
   const box = $("#unassignedBox");
   const list = $("#unassignedList");
@@ -387,16 +331,15 @@ async function loadKataster() {
       r.outlets.forEach((o) => {
         const row = document.createElement("div");
         row.className = "tree-outlet";
+        const patch = o.patch_panel_name ? ` · ${o.patch_panel_name}/${o.patch_panel_port ?? "?"}` : "";
         row.innerHTML =
           `<span class="outlet-icon">${o.device_icon ?? "·"}</span>` +
-          `<span class="outlet-label">${o.label}</span>` +
+          `<span class="outlet-label">${o.label}<span class="outlet-patch">${patch}</span></span>` +
           `<span class="outlet-meta">${o.n_measurements} Messung(en)</span>`;
-        row.addEventListener("click", () => showHistory(o, r, f));
+        row.addEventListener("click", () => showOutletDetail(o, r, f));
         rm.appendChild(row);
       });
-      if (!r.outlets.length) {
-        rm.insertAdjacentHTML("beforeend", '<div class="tree-empty">keine Dosen</div>');
-      }
+      if (!r.outlets.length) rm.insertAdjacentHTML("beforeend", '<div class="tree-empty">keine Dosen</div>');
       fl.appendChild(rm);
     });
     tree.appendChild(fl);
@@ -406,10 +349,61 @@ async function loadKataster() {
   }
 }
 
-async function showHistory(outlet, room, floor) {
-  const panel = $("#historyPanel");
+async function showOutletDetail(outlet, room, floor) {
+  CURRENT_OUTLET = { outlet, room, floor };
+  const panel = $("#outletDetail");
   panel.style.display = "block";
-  $("#historyTitle").textContent = `HISTORIE — ${floor.name} / ${room.name} / ${outlet.label}`;
+  $("#outletDetailTitle").textContent =
+    `DOSE — ${floor.name} / ${room.name} / ${outlet.label}`;
+  $("#detailPatchName").value = outlet.patch_panel_name || "";
+  $("#detailPatchPort").value = outlet.patch_panel_port || "";
+  $("#detailNotes").value = outlet.notes || "";
+  $("#detailStatus").textContent = "";
+
+  // Geräte-Icons
+  const box = $("#detailDeviceIcons");
+  box.innerHTML = "";
+  let selectedDevice = outlet.device_type_id;
+  DEVICE_TYPES.forEach((dt) => {
+    const btn = document.createElement("button");
+    btn.className = "device-icon" + (selectedDevice === dt.id ? " active" : "");
+    btn.textContent = dt.icon;
+    btn.title = dt.name;
+    btn.addEventListener("click", () => {
+      selectedDevice = selectedDevice === dt.id ? null : dt.id;
+      box.querySelectorAll(".device-icon").forEach((b) => b.classList.remove("active"));
+      if (selectedDevice === dt.id) btn.classList.add("active");
+      panel.dataset.deviceTypeId = selectedDevice ?? "";
+    });
+    box.appendChild(btn);
+  });
+  panel.dataset.deviceTypeId = selectedDevice ?? "";
+
+  $("#detailSave").onclick = async () => {
+    try {
+      await patchJson(`/api/outlets/${outlet.id}`, {
+        patch_panel_name: $("#detailPatchName").value.trim() || null,
+        patch_panel_port: $("#detailPatchPort").value.trim() || null,
+        notes: $("#detailNotes").value.trim() || null,
+        device_type_id: panel.dataset.deviceTypeId ? Number(panel.dataset.deviceTypeId) : null,
+      });
+      $("#detailStatus").textContent = "✓ gespeichert";
+      loadTree();
+    } catch (e) { $("#detailStatus").textContent = `Fehler: ${e.message}`; }
+  };
+  $("#detailDelete").onclick = async () => {
+    if (!confirm(`Dose "${outlet.label}" löschen?`)) return;
+    try {
+      await api(`/api/outlets/${outlet.id}`, { method: "DELETE" });
+    } catch (e) {
+      if (confirm(`${e.message}\n\nWirklich inkl. aller Messungen löschen?`)) {
+        await api(`/api/outlets/${outlet.id}?confirm=true`, { method: "DELETE" });
+      } else return;
+    }
+    loadKataster();
+  };
+
+  // Historie
   const list = $("#historyList");
   list.textContent = "lade …";
   const data = await api(`/api/measurements?outlet_id=${outlet.id}`);
@@ -438,12 +432,11 @@ async function showHistory(outlet, room, floor) {
     const del = document.createElement("button");
     del.className = "btn-inline";
     del.textContent = "✕";
-    del.title = "Messung löschen";
     del.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       if (!confirm("Messung löschen?")) return;
       await api(`/api/measurements/${m.id}`, { method: "DELETE" });
-      showHistory(outlet, room, floor);
+      showOutletDetail(outlet, room, floor);
     });
     row.appendChild(del);
     list.appendChild(row);
@@ -452,25 +445,144 @@ async function showHistory(outlet, room, floor) {
 }
 
 function assignDialog(measurementId) {
-  // simpel: prompt-Kette über Dropdown wäre schöner, aber prompt reicht v1-mäßig nicht —
-  // wir bauen ein kleines dynamisches Auswahlmenü:
   const options = [];
   TREE.floors.forEach((f) => f.rooms.forEach((r) => r.outlets.forEach((o) =>
     options.push({ id: o.id, label: `${f.name} / ${r.name} / ${o.label}` }))));
-  if (!options.length) { alert("Keine Dosen vorhanden — erst im Kataster/Verwaltung anlegen."); return; }
+  if (!options.length) { alert("Keine Dosen vorhanden."); return; }
   const choice = prompt(
     "Dose wählen (Nummer eingeben):\n" +
     options.map((o, i) => `${i + 1}: ${o.label}`).join("\n"));
   const idx = Number(choice) - 1;
   if (isNaN(idx) || !options[idx]) return;
-  api(`/api/measurements/${measurementId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ outlet_id: options[idx].id }),
-  }).then(loadKataster);
+  patchJson(`/api/measurements/${measurementId}`, { outlet_id: options[idx].id })
+    .then(loadKataster);
 }
 
 $("#reloadTree").addEventListener("click", loadKataster);
+
+// ------------------------------------------------- Port-Aktionen
+
+function renderPortAktionen() {
+  const has = !!LAST_SWITCH;
+  $("#paEmpty").style.display = has ? "none" : "block";
+  $("#paContent").style.display = has ? "block" : "none";
+  if (!has) return;
+  $("#paSwitch").textContent = LAST_SWITCH.name || "?";
+  $("#paPort").textContent = LAST_SWITCH.portName;
+  $("#paIp").textContent = LAST_SWITCH.host;
+  $("#descrState").textContent = "—";
+  $("#descrEdit").style.display = "none";
+  $("#descrStatus").textContent = "";
+  $("#vlanState").textContent = "—";
+  $("#vlanEdit").style.display = "none";
+  $("#vlanStatus").textContent = "";
+}
+
+$("#descrPreview").addEventListener("click", async () => {
+  $("#descrState").textContent = "löse ifIndex auf …";
+  try {
+    const outletId = pickOutlet.value ? Number(pickOutlet.value) : null;
+    const prev = await postJson("/api/snmp/preview", {
+      host: LAST_SWITCH.host, port_name: LAST_SWITCH.portName, outlet_id: outletId,
+    });
+    if (prev.error) { $("#descrState").textContent = `Fehler: ${prev.error}`; return; }
+    PA_IFINDEX = prev.ifindex;
+    $("#descrState").innerHTML =
+      `Port: <b>${prev.matched_name}</b> (ifIndex ${prev.ifindex})<br>` +
+      `Aktuell: <b>${prev.current_description ?? "(leer)"}</b>`;
+    $("#descrInput").value = prev.proposed_description || "";
+    $("#descrEdit").style.display = "block";
+  } catch (e) { $("#descrState").textContent = `Fehler: ${e.message}`; }
+});
+
+$("#descrWrite").addEventListener("click", async () => {
+  if (!PA_IFINDEX) return;
+  if (!confirm(`Description "${$("#descrInput").value}" auf ${LAST_SWITCH.host} Port ifIndex ${PA_IFINDEX} schreiben?`)) return;
+  $("#descrStatus").textContent = "schreibe …";
+  try {
+    const res = await postJson("/api/snmp/write", {
+      host: LAST_SWITCH.host, ifindex: PA_IFINDEX, description: $("#descrInput").value,
+    });
+    $("#descrStatus").textContent = res.success ? "✓ geschrieben" : `Fehler: ${res.error}`;
+  } catch (e) { $("#descrStatus").textContent = `Fehler: ${e.message}`; }
+});
+
+$("#vlanLoad").addEventListener("click", async () => {
+  $("#vlanState").textContent = "lade VLAN-Zustand …";
+  try {
+    if (!PA_IFINDEX) {
+      const prev = await postJson("/api/snmp/preview", {
+        host: LAST_SWITCH.host, port_name: LAST_SWITCH.portName, outlet_id: null,
+      });
+      if (prev.error) { $("#vlanState").textContent = `Fehler: ${prev.error}`; return; }
+      PA_IFINDEX = prev.ifindex;
+    }
+    const state = await postJson("/api/snmp/vlan_state", {
+      host: LAST_SWITCH.host, ifindex: PA_IFINDEX,
+    });
+    if (state.error) { $("#vlanState").textContent = `Fehler: ${state.error}`; return; }
+    VLAN_CURRENT = state;
+    $("#vlanState").innerHTML =
+      `PVID (untagged): <b>${state.pvid ?? "?"}</b><br>` +
+      `Tagged: <b>${state.tagged_vlans.join(", ") || "keine"}</b>`;
+    $("#vlanPvid").value = state.pvid ?? "";
+    $("#vlanTagged").value = state.tagged_vlans.join(",");
+    $("#vlanEdit").style.display = "block";
+    updateVlanDiff();
+  } catch (e) { $("#vlanState").textContent = `Fehler: ${e.message}`; }
+});
+
+function parseTagged() {
+  return $("#vlanTagged").value.split(",").map(s => Number(s.trim())).filter(n => n >= 1 && n <= 4094);
+}
+function updateVlanDiff() {
+  if (!VLAN_CURRENT) return;
+  const newPvid = Number($("#vlanPvid").value) || null;
+  const newTagged = parseTagged();
+  const diffs = [];
+  if (newPvid !== VLAN_CURRENT.pvid) diffs.push(`PVID: ${VLAN_CURRENT.pvid} → ${newPvid ?? "?"}`);
+  const oldT = VLAN_CURRENT.tagged_vlans.join(","), newT = newTagged.join(",");
+  if (oldT !== newT) diffs.push(`Tagged: [${oldT || "—"}] → [${newT || "—"}]`);
+  $("#vlanDiff").innerHTML = diffs.length
+    ? "Änderungen:<br>" + diffs.map(d => `• ${d}`).join("<br>")
+    : "keine Änderungen";
+  return diffs;
+}
+$("#vlanPvid").addEventListener("input", updateVlanDiff);
+$("#vlanTagged").addEventListener("input", updateVlanDiff);
+
+$("#vlanWrite").addEventListener("click", () => {
+  const diffs = updateVlanDiff();
+  if (!diffs || !diffs.length) { alert("Keine Änderungen."); return; }
+  $("#vlanConfirmDiff").innerHTML =
+    `Switch: <b>${LAST_SWITCH.host}</b>, Port: <b>${LAST_SWITCH.portName}</b><br>` +
+    diffs.map(d => `• ${d}`).join("<br>");
+  $("#vlanConfirmCheck").checked = false;
+  $("#vlanConfirmGo").disabled = true;
+  $("#vlanConfirmDialog").showModal();
+});
+$("#vlanConfirmCheck").addEventListener("change", (e) => {
+  $("#vlanConfirmGo").disabled = !e.target.checked;
+});
+$("#vlanConfirmCancel").addEventListener("click", () => $("#vlanConfirmDialog").close());
+$("#vlanConfirmGo").addEventListener("click", async () => {
+  $("#vlanConfirmDialog").close();
+  $("#vlanStatus").textContent = "schreibe VLAN-Konfiguration …";
+  try {
+    const res = await postJson("/api/snmp/vlan_write", {
+      host: LAST_SWITCH.host,
+      ifindex: PA_IFINDEX,
+      pvid: Number($("#vlanPvid").value) || null,
+      tagged_vlans: parseTagged(),
+    });
+    if (res.success) {
+      $("#vlanStatus").textContent = "✓ geschrieben — " + res.steps.join(" · ");
+      VLAN_CURRENT = null;
+    } else {
+      $("#vlanStatus").textContent = `Fehler: ${res.error} (${(res.steps || []).join(" · ")})`;
+    }
+  } catch (e) { $("#vlanStatus").textContent = `Fehler: ${e.message}`; }
+});
 
 // ------------------------------------------------- Export-Dialog
 
@@ -515,7 +627,6 @@ async function loadVerwaltung() {
   await loadTree();
   await loadDeviceTypes();
 
-  // Etagen
   const fbox = $("#floorAdmin");
   fbox.innerHTML = "";
   TREE.floors.forEach((f) => {
@@ -529,7 +640,6 @@ async function loadVerwaltung() {
     fbox.appendChild(row);
   });
 
-  // Etagen-Select für Räume
   const sel = $("#adminFloorSelect");
   const prevSel = sel.value;
   sel.innerHTML = '<option value="">Etage wählen…</option>';
@@ -541,7 +651,6 @@ async function loadVerwaltung() {
   if (prevSel) sel.value = prevSel;
   renderRoomAdmin();
 
-  // Gerätetypen
   const dbox = $("#deviceAdmin");
   dbox.innerHTML = "";
   DEVICE_TYPES.forEach((dt) => {
@@ -559,7 +668,6 @@ async function loadVerwaltung() {
     dbox.appendChild(row);
   });
 
-  // Settings
   const settings = await api("/api/settings");
   $("#setIperf").value = settings.iperf_server || "";
   $("#setCommunity").value = settings.snmp_community || "";
@@ -588,7 +696,6 @@ async function deleteWithConfirm(url, label) {
   try {
     await api(url, { method: "DELETE" });
   } catch (e) {
-    // 409: enthält Messungen
     if (confirm(`${e.message}\n\nWirklich ALLES löschen (inkl. Messungen)?`)) {
       await api(`${url}?confirm=true`, { method: "DELETE" });
     } else return;
@@ -600,10 +707,7 @@ $("#addFloor").addEventListener("click", async () => {
   const name = $("#newFloorName").value.trim();
   if (!name) return;
   try {
-    await api("/api/floors", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
+    await postJson("/api/floors", { name });
     $("#newFloorName").value = "";
     loadVerwaltung();
   } catch (e) { alert(e.message); }
@@ -614,10 +718,7 @@ $("#addRoom").addEventListener("click", async () => {
   const floorId = $("#adminFloorSelect").value;
   if (!name || !floorId) { alert("Etage wählen und Namen eingeben"); return; }
   try {
-    await api("/api/rooms", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, floor_id: Number(floorId) }),
-    });
+    await postJson("/api/rooms", { name, floor_id: Number(floorId) });
     $("#newRoomName").value = "";
     loadVerwaltung();
   } catch (e) { alert(e.message); }
@@ -628,10 +729,7 @@ $("#addDevice").addEventListener("click", async () => {
   const icon = $("#newDeviceIcon").value.trim() || "❓";
   if (!name) return;
   try {
-    await api("/api/device_types", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, icon }),
-    });
+    await postJson("/api/device_types", { name, icon });
     $("#newDeviceName").value = ""; $("#newDeviceIcon").value = "";
     loadVerwaltung();
   } catch (e) { alert(e.message); }
@@ -650,7 +748,6 @@ $("#saveSettings").addEventListener("click", async () => {
   setTimeout(() => ($("#settingsStatus").textContent = ""), 2000);
 });
 
-// DB restore
 $("#restoreFile").addEventListener("change", async (ev) => {
   const file = ev.target.files[0];
   if (!file) return;

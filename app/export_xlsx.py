@@ -16,6 +16,8 @@ COLUMNS = {
     "floor": ("Etage", "f.name"),
     "room": ("Raum", "r.name"),
     "outlet": ("Dose", "o.label"),
+    "patch_panel_name": ("Patchfeld", "o.patch_panel_name"),
+    "patch_panel_port": ("Patchfeld-Port", "o.patch_panel_port"),
     "device": ("Gerät", "dt.name"),
     "timestamp": ("Zeitpunkt", "m.started_at"),
     "kind": ("Messart", "m.kind"),
@@ -29,8 +31,9 @@ COLUMNS = {
     "notes": ("Notizen", "o.notes"),
 }
 
-DEFAULT_COLUMNS = ["floor", "room", "outlet", "device", "timestamp",
-                   "speed", "duplex", "vlan_ids", "switch_name", "switch_port", "dhcp_ok"]
+DEFAULT_COLUMNS = ["floor", "room", "outlet", "patch_panel_name", "patch_panel_port",
+                   "device", "timestamp", "speed", "duplex", "vlan_ids",
+                   "switch_name", "switch_port", "dhcp_ok"]
 
 
 def export_xlsx(columns: list[str], latest_only: bool = True,

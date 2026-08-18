@@ -15,7 +15,8 @@ from app.collectors.sniff import sniff_port
 from app.collectors.dhcp import discover_dhcp
 from app.collectors.reach import ping_test, scan_subnet
 from app.collectors.iperf import run_iperf
-from app.collectors.snmp import resolve_ifindex, get_current_alias, set_port_description
+from app.collectors.snmp import (resolve_ifindex, get_current_alias, set_port_description,
+    get_vlan_state, set_vlan_state)
 from app.export_xlsx import export_xlsx, COLUMNS, DEFAULT_COLUMNS
 
 app = FastAPI(title="netdiag", description="Lokaler Netzwerk-Port-Tester + Kabelkataster")
@@ -41,6 +42,8 @@ def api_interfaces():
         for p in sorted(net.iterdir()):
             if p.name == "lo":
                 continue
+            if (p / "wireless").exists():  # WLAN raus — Messen nur über LAN
+                continue
             if (p / "device").exists():  # nur echte Hardware
                 ifaces.append(p.name)
     return {"interfaces": ifaces or ["eth0"]}
@@ -50,7 +53,6 @@ def api_interfaces():
 def autotest(
     interface: str = Query("eth0"),
     sniff_seconds: int = Query(6, ge=2, le=30),
-    outlet_id: int | None = Query(None),
 ):
     link = get_link_info(interface)
     lldp = get_lldp_neighbors(interface)
@@ -69,18 +71,14 @@ def autotest(
         "dhcp": dhcp,
         "ping_gateway": ping_gateway,
     }
-    result["measurement_id"] = save_measurement(result, outlet_id, kind="autotest")
-    result["outlet_id"] = outlet_id
+    # v3: kein Auto-Save — Speichern erfolgt explizit via POST /api/measurements
     return result
 
 
 @app.get("/api/iperf")
-def api_iperf(outlet_id: int | None = Query(None), duration: int = Query(10, ge=3, le=60)):
+def api_iperf(duration: int = Query(10, ge=3, le=60)):
     server = get_setting("iperf_server")
-    result = run_iperf(server, duration=duration)
-    if not result.get("error"):
-        result["measurement_id"] = save_measurement(result, outlet_id, kind="iperf")
-    return result
+    return run_iperf(server, duration=duration)
 
 
 @app.get("/api/ping")
@@ -191,8 +189,10 @@ def create_outlet(payload: dict = Body(...)):
     conn = get_conn()
     try:
         cur = conn.execute(
-            "INSERT INTO outlets(room_id, label, device_type_id, notes) VALUES (?, ?, ?, ?)",
-            (room_id, label, payload.get("device_type_id"), payload.get("notes")))
+            """INSERT INTO outlets(room_id, label, device_type_id, notes,
+               patch_panel_name, patch_panel_port) VALUES (?, ?, ?, ?, ?, ?)""",
+            (room_id, label, payload.get("device_type_id"), payload.get("notes"),
+             payload.get("patch_panel_name"), payload.get("patch_panel_port")))
         conn.commit()
         return {"id": cur.lastrowid, "label": label}
     except Exception:
@@ -205,7 +205,7 @@ def create_outlet(payload: dict = Body(...)):
 def update_outlet(outlet_id: int, payload: dict = Body(...)):
     conn = get_conn()
     fields, params = [], []
-    for key in ("label", "device_type_id", "notes"):
+    for key in ("label", "device_type_id", "notes", "patch_panel_name", "patch_panel_port"):
         if key in payload:
             fields.append(f"{key} = ?")
             params.append(payload[key])
@@ -266,6 +266,18 @@ def delete_device_type(dt_id: int):
 
 
 # ------------------------------------------------------------ Messungen
+
+@app.post("/api/measurements")
+def save_measurement_endpoint(payload: dict = Body(...)):
+    """v3: Messung explizit speichern (Ein-Klick mit sticky Dose)."""
+    result = payload.get("result")
+    if not result:
+        raise HTTPException(400, "result fehlt")
+    kind = payload.get("kind", "autotest")
+    outlet_id = payload.get("outlet_id")
+    mid = save_measurement(result, outlet_id, kind=kind)
+    return {"measurement_id": mid, "outlet_id": outlet_id}
+
 
 @app.get("/api/measurements")
 def list_measurements(outlet_id: int | None = Query(None), unassigned: bool = Query(False)):
@@ -385,6 +397,32 @@ def snmp_write(payload: dict = Body(...)):
         raise HTTPException(400, "host, ifindex und description erforderlich")
     community = get_setting("snmp_community") or ""
     return set_port_description(host, community, int(ifindex), description)
+
+
+@app.post("/api/snmp/vlan_state")
+def snmp_vlan_state(payload: dict = Body(...)):
+    """Aktuellen VLAN-Zustand (PVID, tagged/untagged) eines Ports lesen."""
+    host = payload.get("host")
+    ifindex = payload.get("ifindex")
+    if not host or not ifindex:
+        raise HTTPException(400, "host und ifindex erforderlich")
+    community = get_setting("snmp_community") or ""
+    return get_vlan_state(host, community, int(ifindex))
+
+
+@app.post("/api/snmp/vlan_write")
+def snmp_vlan_write(payload: dict = Body(...)):
+    """VLAN-Konfiguration eines Ports schreiben (EXPERIMENTELL)."""
+    host = payload.get("host")
+    ifindex = payload.get("ifindex")
+    if not host or not ifindex:
+        raise HTTPException(400, "host und ifindex erforderlich")
+    community = get_setting("snmp_community") or ""
+    return set_vlan_state(
+        host, community, int(ifindex),
+        pvid=payload.get("pvid"),
+        tagged_vlans=payload.get("tagged_vlans") or [],
+    )
 
 
 # ------------------------------------------------------------ Export/Import
