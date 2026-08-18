@@ -13,76 +13,184 @@
         <span class="brand-mark">▮▮▮</span>
         <span class="brand-name">netdiag</span>
       </div>
-      <div class="iface-select">
-        <label for="iface">PORT</label>
-        <select id="iface"></select>
-        <button id="refreshIfaces" title="Interfaces neu laden">↻</button>
-      </div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="messen">MESSEN</button>
+        <button class="tab" data-tab="kataster">KATASTER</button>
+        <button class="tab" data-tab="verwaltung">VERWALTUNG</button>
+      </nav>
     </header>
 
-    <section class="run-row">
-      <button id="runAutotest" class="btn-primary">AUTOTEST STARTEN</button>
-      <div id="runStatus" class="run-status">bereit</div>
+    <!-- ======================= MESSEN ======================= -->
+    <section id="tab-messen" class="tab-panel active">
+
+      <div class="outlet-picker card">
+        <div class="card-head">DOSE (optional — leer = freie Messung)</div>
+        <div class="picker-row">
+          <select id="pickFloor"><option value="">Etage…</option></select>
+          <select id="pickRoom" disabled><option value="">Raum…</option></select>
+          <select id="pickOutlet" disabled><option value="">Dose…</option></select>
+          <button id="quickAddOutlet" title="Neue Dose in diesem Raum anlegen" disabled>+ Dose</button>
+        </div>
+        <div class="picker-row device-row" id="deviceRow" style="display:none">
+          <span class="device-label">Gerät:</span>
+          <div id="deviceIcons" class="device-icons"></div>
+        </div>
+      </div>
+
+      <div class="run-row">
+        <div class="iface-select">
+          <label for="iface">PORT</label>
+          <select id="iface"></select>
+        </div>
+        <button id="runAutotest" class="btn-primary">AUTOTEST</button>
+        <button id="runIperf" class="btn-secondary">DURCHSATZ (iperf)</button>
+        <div id="runStatus" class="run-status">bereit</div>
+      </div>
+
+      <main class="grid">
+        <article class="card" id="card-link">
+          <div class="card-head"><span class="led" data-led></span>LINK</div>
+          <dl class="kv" data-body><dt>Status</dt><dd>—</dd><dt>Speed</dt><dd>—</dd><dt>Duplex</dt><dd>—</dd></dl>
+        </article>
+        <article class="card" id="card-lldp">
+          <div class="card-head"><span class="led" data-led></span>SWITCH (LLDP/CDP)</div>
+          <dl class="kv" data-body><dt>Switch</dt><dd>—</dd><dt>Port</dt><dd>—</dd><dt>Mgmt-IP</dt><dd>—</dd></dl>
+          <button id="snmpBtn" class="btn-inline" style="display:none">Port-Description am Switch setzen…</button>
+        </article>
+        <article class="card" id="card-vlan">
+          <div class="card-head"><span class="led" data-led></span>VLAN / 802.1X / STP</div>
+          <dl class="kv" data-body><dt>VLAN-IDs</dt><dd>—</dd><dt>802.1X</dt><dd>—</dd><dt>STP</dt><dd>—</dd></dl>
+        </article>
+        <article class="card" id="card-dhcp">
+          <div class="card-head"><span class="led" data-led></span>DHCP</div>
+          <dl class="kv" data-body><dt>Angebotene IP</dt><dd>—</dd><dt>Gateway</dt><dd>—</dd><dt>DNS</dt><dd>—</dd><dt>Maske</dt><dd>—</dd></dl>
+        </article>
+        <article class="card" id="card-ping">
+          <div class="card-head"><span class="led" data-led></span>GATEWAY-PING</div>
+          <dl class="kv" data-body><dt>Erreichbar</dt><dd>—</dd><dt>Latenz Ø</dt><dd>—</dd></dl>
+        </article>
+        <article class="card" id="card-iperf">
+          <div class="card-head"><span class="led" data-led></span>DURCHSATZ (iperf3)</div>
+          <dl class="kv" data-body><dt>Download</dt><dd>—</dd><dt>Upload</dt><dd>—</dd><dt>Retransmits</dt><dd>—</dd></dl>
+        </article>
+        <article class="card card-wide" id="card-scan">
+          <div class="card-head"><span class="led" data-led></span>NETZ-SCAN (manuell)</div>
+          <div class="scan-controls">
+            <input id="subnetInput" placeholder="z.B. 192.168.1.0/24">
+            <button id="runScan">SCAN</button>
+          </div>
+          <div id="scanResults" class="scan-results"></div>
+        </article>
+      </main>
     </section>
 
-    <main class="grid">
+    <!-- ======================= KATASTER ======================= -->
+    <section id="tab-kataster" class="tab-panel">
+      <div class="kataster-actions">
+        <button id="openExport" class="btn-secondary">XLSX-EXPORT…</button>
+        <button id="reloadTree" class="btn-inline">↻ neu laden</button>
+      </div>
 
-      <article class="card" id="card-link">
-        <div class="card-head"><span class="led" data-led></span>LINK</div>
-        <dl class="kv" data-body>
-          <dt>Status</dt><dd>—</dd>
-          <dt>Speed</dt><dd>—</dd>
-          <dt>Duplex</dt><dd>—</dd>
-        </dl>
-      </article>
+      <div id="unassignedBox" class="card" style="display:none">
+        <div class="card-head">⚠ NICHT ZUGEORDNETE MESSUNGEN</div>
+        <div id="unassignedList"></div>
+      </div>
 
-      <article class="card" id="card-lldp">
-        <div class="card-head"><span class="led" data-led></span>SWITCH (LLDP/CDP)</div>
-        <dl class="kv" data-body>
-          <dt>Switch</dt><dd>—</dd>
-          <dt>Port</dt><dd>—</dd>
-          <dt>Mgmt-IP</dt><dd>—</dd>
-        </dl>
-      </article>
+      <div id="tree" class="tree"></div>
 
-      <article class="card" id="card-vlan">
-        <div class="card-head"><span class="led" data-led></span>VLAN / 802.1X / STP</div>
-        <dl class="kv" data-body>
-          <dt>VLAN-IDs</dt><dd>—</dd>
-          <dt>802.1X (EAPOL)</dt><dd>—</dd>
-          <dt>Spanning Tree</dt><dd>—</dd>
-        </dl>
-      </article>
+      <div id="historyPanel" class="card" style="display:none">
+        <div class="card-head" id="historyTitle">HISTORIE</div>
+        <div id="historyList"></div>
+      </div>
+    </section>
 
-      <article class="card" id="card-dhcp">
-        <div class="card-head"><span class="led" data-led></span>DHCP</div>
-        <dl class="kv" data-body>
-          <dt>Angebotene IP</dt><dd>—</dd>
-          <dt>Gateway</dt><dd>—</dd>
-          <dt>DNS</dt><dd>—</dd>
-          <dt>Subnetzmaske</dt><dd>—</dd>
-        </dl>
-      </article>
+    <!-- ======================= VERWALTUNG ======================= -->
+    <section id="tab-verwaltung" class="tab-panel">
+      <div class="grid">
+        <article class="card">
+          <div class="card-head">ETAGEN</div>
+          <div id="floorAdmin"></div>
+          <div class="admin-add">
+            <input id="newFloorName" placeholder="z.B. EG, 1. OG">
+            <button id="addFloor">+</button>
+          </div>
+        </article>
 
-      <article class="card" id="card-ping">
-        <div class="card-head"><span class="led" data-led></span>GATEWAY-PING</div>
-        <dl class="kv" data-body>
-          <dt>Erreichbar</dt><dd>—</dd>
-          <dt>Latenz Ø</dt><dd>—</dd>
-        </dl>
-      </article>
+        <article class="card">
+          <div class="card-head">RÄUME</div>
+          <select id="adminFloorSelect"><option value="">Etage wählen…</option></select>
+          <div id="roomAdmin"></div>
+          <div class="admin-add">
+            <input id="newRoomName" placeholder="z.B. R201">
+            <button id="addRoom">+</button>
+          </div>
+        </article>
 
-      <article class="card card-wide" id="card-scan">
-        <div class="card-head"><span class="led" data-led></span>NETZ-SCAN (manuell)</div>
-        <div class="scan-controls">
-          <input id="subnetInput" placeholder="z.B. 192.168.1.0/24">
-          <button id="runScan">SCAN</button>
-        </div>
-        <div id="scanResults" class="scan-results"></div>
-      </article>
+        <article class="card">
+          <div class="card-head">GERÄTETYPEN</div>
+          <div id="deviceAdmin"></div>
+          <div class="admin-add">
+            <input id="newDeviceIcon" placeholder="🖥" style="width:52px">
+            <input id="newDeviceName" placeholder="Name">
+            <button id="addDevice">+</button>
+          </div>
+        </article>
 
-    </main>
+        <article class="card">
+          <div class="card-head">EINSTELLUNGEN</div>
+          <label class="setting-label">iperf3-Server (IP/Host)</label>
+          <input id="setIperf" placeholder="z.B. 10.0.10.5">
+          <label class="setting-label">SNMP Community (v2c, write)</label>
+          <input id="setCommunity" type="password" placeholder="Community-String">
+          <label class="setting-label">SNMP Description-Template</label>
+          <input id="setTemplate" placeholder="{raum}-{dose} {geraet}">
+          <button id="saveSettings" class="btn-secondary" style="margin-top:10px">SPEICHERN</button>
+          <span id="settingsStatus" class="run-status"></span>
+        </article>
+
+        <article class="card card-wide">
+          <div class="card-head">DATENBANK</div>
+          <div class="db-actions">
+            <a href="/api/db/backup" class="btn-secondary" download>BACKUP HERUNTERLADEN</a>
+            <label class="btn-secondary file-label">
+              WIEDERHERSTELLEN…
+              <input type="file" id="restoreFile" accept=".db" hidden>
+            </label>
+            <span id="dbStatus" class="run-status"></span>
+          </div>
+        </article>
+      </div>
+    </section>
+
   </div>
+
+  <!-- Export-Dialog -->
+  <dialog id="exportDialog">
+    <h3>XLSX-Export</h3>
+    <div id="exportColumns" class="export-columns"></div>
+    <label class="check-row"><input type="checkbox" id="expLatestOnly" checked> nur letzte Messung pro Dose</label>
+    <div class="date-row">
+      <label>von <input type="date" id="expFrom"></label>
+      <label>bis <input type="date" id="expTo"></label>
+    </div>
+    <div class="dialog-actions">
+      <button id="expCancel" class="btn-inline">Abbrechen</button>
+      <button id="expRun" class="btn-primary">EXPORTIEREN</button>
+    </div>
+  </dialog>
+
+  <!-- SNMP-Dialog -->
+  <dialog id="snmpDialog">
+    <h3>Port-Description setzen</h3>
+    <div id="snmpInfo" class="snmp-info">…</div>
+    <label class="setting-label">Description</label>
+    <input id="snmpDescr">
+    <div class="dialog-actions">
+      <button id="snmpCancel" class="btn-inline">Abbrechen</button>
+      <button id="snmpConfirm" class="btn-primary" disabled>AM SWITCH SCHREIBEN</button>
+    </div>
+    <div id="snmpStatus" class="run-status"></div>
+  </dialog>
 
   <script src="/static/app.js"></script>
 </body>

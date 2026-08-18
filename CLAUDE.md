@@ -14,10 +14,17 @@ einem Linux-Netbook. Läuft rein lokal, kein Cloud-Bezug, kein DSGVO-Thema
   sauber kapseln (ein Modul `privileged.py` für alles was CAP_NET_RAW braucht).
 
 ## Stack
-- Python 3.11+, FastAPI, Uvicorn
-- Scapy für Paket-Sniffing (VLAN/EAPOL/STP)
-- Subprocess-Wrapper für ethtool, lldpcli, nmap, ping
-- Vanilla JS/HTML Frontend, kein Build-Step
+- Python 3.11+, FastAPI, Uvicorn, SQLite (eine Datei, data/netdiag.db)
+- Scapy für Paket-Sniffing (VLAN/EAPOL/STP/CDP)
+- Subprocess-Wrapper für ethtool, lldpcli, nmap, ping, iperf3, snmpwalk/snmpset
+- openpyxl für XLSX-Export
+- Vanilla JS/HTML Frontend, kein Build-Step, 3 Tabs (Messen/Kataster/Verwaltung)
+
+## Domänenmodell
+Dose (outlet) = langlebiges Objekt an festem Ort (Etage→Raum→Dose).
+Messungen = Ereignisse an Dosen, outlet_id nullable (freie Messung,
+nachträglich zuordenbar). Summary-Spalten denormalisiert + Roh-JSON.
+Details: docs/KONZEPT.md
 
 ## Konventionen (wie in anderen Projekten)
 - ADRs in `docs/adr/` bei größeren Design-Entscheidungen

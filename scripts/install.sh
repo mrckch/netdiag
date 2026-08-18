@@ -12,7 +12,7 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> Installiere Systempakete (lldpd, ethtool, nmap, python3-venv) ..."
 apt-get update -qq
-apt-get install -y lldpd ethtool nmap python3-venv python3-pip xdg-utils
+apt-get install -y lldpd ethtool nmap iperf3 snmp python3-venv python3-pip libnotify-bin
 
 echo "==> Aktiviere lldpd ..."
 systemctl enable --now lldpd
