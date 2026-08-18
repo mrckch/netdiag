@@ -1,0 +1,16 @@
+[Unit]
+Description=netdiag - lokaler Netzwerk-Port-Tester
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/netdiag
+ExecStart=/opt/netdiag/.venv/bin/python -m app.main
+Restart=on-failure
+RestartSec=3
+# Braucht CAP_NET_RAW für Scapy-Sniffing (VLAN/EAPOL/STP/CDP) und nmap.
+# Root ist hier pragmatisch (dediziertes Diagnosegerät, siehe CLAUDE.md).
+User=root
+
+[Install]
+WantedBy=multi-user.target

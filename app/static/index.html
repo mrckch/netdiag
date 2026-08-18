@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>netdiag</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="chassis">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">▮▮▮</span>
+        <span class="brand-name">netdiag</span>
+      </div>
+      <div class="iface-select">
+        <label for="iface">PORT</label>
+        <select id="iface"></select>
+        <button id="refreshIfaces" title="Interfaces neu laden">↻</button>
+      </div>
+    </header>
+
+    <section class="run-row">
+      <button id="runAutotest" class="btn-primary">AUTOTEST STARTEN</button>
+      <div id="runStatus" class="run-status">bereit</div>
+    </section>
+
+    <main class="grid">
+
+      <article class="card" id="card-link">
+        <div class="card-head"><span class="led" data-led></span>LINK</div>
+        <dl class="kv" data-body>
+          <dt>Status</dt><dd>—</dd>
+          <dt>Speed</dt><dd>—</dd>
+          <dt>Duplex</dt><dd>—</dd>
+        </dl>
+      </article>
+
+      <article class="card" id="card-lldp">
+        <div class="card-head"><span class="led" data-led></span>SWITCH (LLDP/CDP)</div>
+        <dl class="kv" data-body>
+          <dt>Switch</dt><dd>—</dd>
+          <dt>Port</dt><dd>—</dd>
+          <dt>Mgmt-IP</dt><dd>—</dd>
+        </dl>
+      </article>
+
+      <article class="card" id="card-vlan">
+        <div class="card-head"><span class="led" data-led></span>VLAN / 802.1X / STP</div>
+        <dl class="kv" data-body>
+          <dt>VLAN-IDs</dt><dd>—</dd>
+          <dt>802.1X (EAPOL)</dt><dd>—</dd>
+          <dt>Spanning Tree</dt><dd>—</dd>
+        </dl>
+      </article>
+
+      <article class="card" id="card-dhcp">
+        <div class="card-head"><span class="led" data-led></span>DHCP</div>
+        <dl class="kv" data-body>
+          <dt>Angebotene IP</dt><dd>—</dd>
+          <dt>Gateway</dt><dd>—</dd>
+          <dt>DNS</dt><dd>—</dd>
+          <dt>Subnetzmaske</dt><dd>—</dd>
+        </dl>
+      </article>
+
+      <article class="card" id="card-ping">
+        <div class="card-head"><span class="led" data-led></span>GATEWAY-PING</div>
+        <dl class="kv" data-body>
+          <dt>Erreichbar</dt><dd>—</dd>
+          <dt>Latenz Ø</dt><dd>—</dd>
+        </dl>
+      </article>
+
+      <article class="card card-wide" id="card-scan">
+        <div class="card-head"><span class="led" data-led></span>NETZ-SCAN (manuell)</div>
+        <div class="scan-controls">
+          <input id="subnetInput" placeholder="z.B. 192.168.1.0/24">
+          <button id="runScan">SCAN</button>
+        </div>
+        <div id="scanResults" class="scan-results"></div>
+      </article>
+
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

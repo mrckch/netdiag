@@ -1,0 +1,10 @@
+# Löst bei Ethernet-Link-up ein Skript aus, das das Dashboard im Standard-
+# Browser des eingeloggten Desktop-Users öffnet bzw. in den Vordergrund holt.
+# Der Autotest selbst wird im Dashboard per Klick gestartet (bewusst kein
+# automatischer Sniff-Start, da das ungewollt Traffic mitschneiden würde).
+#
+# Installation: nach /etc/udev/rules.d/ kopieren, danach:
+#   sudo udevadm control --reload-rules
+
+ACTION=="change", SUBSYSTEM=="net", ENV{ID_NET_DRIVER}!="", \
+  RUN+="/opt/netdiag/scripts/on-link-up.sh"
