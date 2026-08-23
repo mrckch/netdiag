@@ -1,5 +1,7 @@
 # netdiag
 
+![CI](https://github.com/mrckch/netdiag/actions/workflows/ci.yml/badge.svg)
+
 Lokaler Netzwerk-Port-Tester **und Kabelkataster** für ein Linux-Netbook —
 Open-Source-Ersatz für Hardware-Handheld-Tester (Fluke LinkIQ, NetAlly
 LinkRunner, Trend NaviTEK) für ~0€ statt ~1000€.
@@ -67,6 +69,26 @@ systemd-Service und die udev-Regel (Desktop-Notification bei Link-up) ein.
 
 Dashboard: `http://localhost:8642`
 
+Das Dashboard ist standardmäßig **nur auf localhost** erreichbar — die API hat
+keine Authentifizierung und kann SNMP-Writes auslösen. Für Fernzugriff (z.B.
+im Management-VLAN) in `/etc/systemd/system/netdiag.service` setzen:
+`Environment=NETDIAG_HOST=0.0.0.0`, dann `systemctl daemon-reload && systemctl
+restart netdiag`.
+
+### Update
+
+```bash
+cd ~/netdiag && git pull && sudo bash scripts/install.sh
+```
+
+Das Skript ist idempotent: kopiert den neuen Stand nach `/opt/netdiag`
+(die Datenbank in `/opt/netdiag/data/` bleibt unangetastet) und startet den
+Service neu. Danach prüfen:
+
+```bash
+curl -s localhost:8642/api/health
+```
+
 ### iperf3-Server (Gegenstelle)
 
 Auf einem Server im Netz (z.B. Docker):
@@ -89,6 +111,21 @@ source .venv/bin/activate
 pip install -r requirements.txt
 sudo .venv/bin/python -m app.main   # sudo für raw sockets (Scapy) & nmap
 ```
+
+Umgebungsvariablen: `NETDIAG_HOST` (Default `127.0.0.1`), `NETDIAG_PORT`
+(Default `8642`), `NETDIAG_DATA_DIR` (Default `data/` im Projekt).
+
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+ruff check app tests
+pytest
+```
+
+Die Tests decken die reinen Parser (ethtool/LLDP/DHCP/nmap), die
+Q-BRIDGE-Bitmap-Logik, das DB-Schema inkl. Migration und die API ab —
+läuft ohne Root und ohne Netzwerk, auch in CI.
 
 ## Architektur
 
