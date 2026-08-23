@@ -74,12 +74,35 @@ Einstecken prüfen).
 | `lldpd/lldpcli nicht installiert` | `sudo apt install lldpd`, danach `sudo systemctl enable --now lldpd` |
 | `lldpcli Timeout — evtl. läuft lldpd nicht` | `sudo systemctl status lldpd` prüfen, ggf. `sudo systemctl restart lldpd` |
 | `lldpcli Antwort konnte nicht geparst werden` | Ungewöhnliche `lldpd`-Version — `lldpcli -f json0 show neighbors details` manuell ausführen und Ausgabe prüfen |
-| kein Fehler, aber „kein Nachbar erkannt" | Der Switch sendet kein LLDP (bei vielen Consumer-/Billig-Switches normal). CDP wird zusätzlich passiv mitgelesen (nur bei Cisco-Geräten, die CDP senden) — sonst bleibt der Switch für netdiag unsichtbar. Das ist eine Einschränkung der Gegenstelle, kein Bug. |
+| kein Fehler, aber „kein Nachbar erkannt" | Der Switch sendet kein LLDP (bei vielen Consumer-/Billig-Switches normal, oder LLDP ist am konkreten Port deaktiviert — siehe unten). CDP wird zusätzlich passiv mitgelesen (nur bei Cisco-Geräten, die CDP senden) — sonst bleibt der Switch für netdiag unsichtbar. |
 
 LLDP braucht typischerweise **mehrere Sekunden**, bis der Switch sein
 erstes LLDP-Paket sendet (Standardintervall oft 30s) — ein Autotest
 direkt nach dem Einstecken kann den Nachbarn verpassen. Bei Bedarf den
 Autotest einfach wiederholen.
+
+### LLDP global aktiv, aber trotzdem kein Nachbar (z. B. D-Link DGS-1210-Serie)
+
+Bei manchen Switches (bestätigt am D-Link DGS-1210-24) reicht der globale
+LLDP-Schalter nicht — es gibt zusätzlich eine **Pro-Port-Einstellung**
+(im D-Link-Webinterface unter *L2 Features → LLDP → LLDP Port Settings*),
+die je Port auf `Disable`, `TX Only`, `RX Only` oder `TX_and_RX` steht.
+Steht der Port, an dem netdiag angeschlossen ist, auf `Disable` oder
+`RX Only`, sendet der Switch auf genau diesem Port kein LLDP — selbst
+wenn LLDP global aktiv ist. Lösung: den Port im Switch-Webinterface
+auf `TX_and_RX` (oder mindestens `TX Only`) stellen.
+
+Diagnose zur Eingrenzung, ob es am Switch oder an `lldpd` liegt:
+
+```bash
+sudo lldpcli show neighbors details   # direkt gegen lldpd, ohne netdiag
+sudo timeout 40 tcpdump -i <interface> -n ether proto 0x88cc   # kommen ueberhaupt Pakete an?
+```
+
+Zeigt `lldpcli` nichts und `tcpdump` auch nicht: Switch sendet nicht
+(Port-Einstellung wie oben prüfen). Zeigt `tcpdump` Pakete, aber
+`lldpcli` nichts: Problem liegt bei `lldpd` selbst — Interface in
+`/etc/lldpd.conf` prüfen bzw. `sudo systemctl restart lldpd`.
 
 ## „VLAN / 802.1X / STP" — Sniff-Fehler
 
