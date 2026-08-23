@@ -58,50 +58,32 @@ Messen ist nur über LAN-Interfaces möglich (WLAN wird ausgefiltert).
 - PoE-Spannung/-Klasse (braucht Analogmesstechnik)
 - Kabel-TDR / Wire-Mapping (braucht spezielle RJ45-Elektronik)
 
-## Setup (Debian/Ubuntu-basiert)
+## Dokumentation
+
+| Dokument | Inhalt |
+|---|---|
+| [docs/INSTALLATION.md](docs/INSTALLATION.md) | Setup, Update, Fernzugriff, Deinstallation |
+| [docs/BENUTZERHANDBUCH.md](docs/BENUTZERHANDBUCH.md) | Bedienung aller vier Bereiche (Messen/Kataster/Port-Aktionen/Verwaltung) |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Lösungen zu allen im Dashboard sichtbaren Fehlermeldungen |
+| [docs/KONZEPT-v3.md](docs/KONZEPT-v3.md) | Designentscheidungen und Domänenmodell |
+
+## Schnellstart (Debian/Ubuntu-basiert)
 
 ```bash
+git clone https://github.com/mrckch/netdiag.git
+cd netdiag
 sudo bash scripts/install.sh
 ```
 
-Installiert Abhängigkeiten (lldpd, ethtool, nmap, iperf3, snmp), richtet den
-systemd-Service und die udev-Regel (Desktop-Notification bei Link-up) ein.
+Dashboard danach: `http://localhost:8642` (standardmäßig nur lokal
+erreichbar — Details und Fernzugriff siehe
+[Installation](docs/INSTALLATION.md)).
 
-Dashboard: `http://localhost:8642`
-
-Das Dashboard ist standardmäßig **nur auf localhost** erreichbar — die API hat
-keine Authentifizierung und kann SNMP-Writes auslösen. Für Fernzugriff (z.B.
-im Management-VLAN) in `/etc/systemd/system/netdiag.service` setzen:
-`Environment=NETDIAG_HOST=0.0.0.0`, dann `systemctl daemon-reload && systemctl
-restart netdiag`.
-
-### Update
+**Update** auf einem bereits installierten Gerät:
 
 ```bash
-cd ~/netdiag && git pull && sudo bash scripts/install.sh
+cd netdiag && git pull && sudo bash scripts/install.sh
 ```
-
-Das Skript ist idempotent: kopiert den neuen Stand nach `/opt/netdiag`
-(die Datenbank in `/opt/netdiag/data/` bleibt unangetastet) und startet den
-Service neu. Danach prüfen:
-
-```bash
-curl -s localhost:8642/api/health
-```
-
-### iperf3-Server (Gegenstelle)
-
-Auf einem Server im Netz (z.B. Docker):
-```bash
-docker run -d --restart unless-stopped --name iperf3 -p 5201:5201 networkstatic/iperf3 -s
-```
-Adresse dann in netdiag unter Verwaltung → iperf3-Server eintragen.
-
-### SNMP
-
-In der Verwaltung die v2c-Write-Community hinterlegen. Auf den Switches muss
-SNMP-Write aktiviert sein. Hinweis: v2c überträgt die Community im Klartext —
-idealerweise nur im Management-VLAN nutzen.
 
 ## Manueller Start (Entwicklung)
 
@@ -139,7 +121,8 @@ data/netdiag.db       SQLite-Datenbank (wird beim ersten Start angelegt)
 udev/, systemd/       Auto-Notification bei Link-up, Autostart
 ```
 
-Details und Designentscheidungen: `docs/KONZEPT.md`
+Details und Designentscheidungen: [docs/KONZEPT-v3.md](docs/KONZEPT-v3.md)
+(ersetzt/ergänzt die ältere [docs/KONZEPT.md](docs/KONZEPT.md))
 
 ## Lizenz
 
