@@ -5,6 +5,10 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/netdiag
+# Default: Dashboard nur auf localhost (API hat keine Auth und kann SNMP-Writes
+# auslösen). Für Fernzugriff im Management-VLAN: NETDIAG_HOST=0.0.0.0 setzen.
+Environment=NETDIAG_HOST=127.0.0.1
+Environment=NETDIAG_PORT=8642
 ExecStart=/opt/netdiag/.venv/bin/python -m app.main
 Restart=on-failure
 RestartSec=3
