@@ -177,6 +177,27 @@
             </div>
             <div id="vlanStatus" class="run-status"></div>
           </article>
+
+          <article class="card card-wide">
+            <div class="card-head">PORT-FEHLERSTATISTIK</div>
+            <p class="pa-hint">Physikalische Fehlerzähler des Switch-Ports (CRC/FCS-,
+            Alignment-Fehler, Late Collisions u.a.) — kumulativ seit dem letzten
+            Switch-Neustart. Ungleich Null und wachsend ist ein starkes Indiz für
+            ein Kabel-/Steckerproblem, nicht für eine Konfigurationsfrage.</p>
+            <div class="pa-errstat-actions">
+              <button id="errSnapshot" class="btn-secondary">SCHNAPPSCHUSS LADEN</button>
+              <button id="errBaseline" class="btn-inline" disabled>ALS BASIS MERKEN</button>
+              <button id="errBaselineClear" class="btn-inline" style="display:none">Basis löschen</button>
+            </div>
+            <div id="errBaselineInfo" class="run-status"></div>
+            <table id="errTable" class="err-table" style="display:none">
+              <thead>
+                <tr><th>Zähler</th><th>Aktuell</th><th>seit Basis</th></tr>
+              </thead>
+              <tbody id="errTableBody"></tbody>
+            </table>
+            <div id="errStatus" class="run-status"></div>
+          </article>
         </div>
       </div>
     </section>

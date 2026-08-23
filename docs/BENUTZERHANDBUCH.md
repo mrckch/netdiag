@@ -195,6 +195,53 @@ unkritischen Testport ausprobieren.
 der Konsequenzen bewusst — die eigene Verbindung kann dabei sofort
 abreißen.
 
+### Port-Fehlerstatistik
+
+Rein lesende Karte — kein Schreibzugriff, kein Risiko für die Verbindung.
+Zeigt die physikalischen Ethernet-Fehlerzähler des zuletzt erkannten
+Switch-Ports per SNMP. Der eigentliche Zweck: unterscheiden, ob ein
+Problem an der **Konfiguration** liegt (VLAN, Duplex, DHCP — siehe die
+anderen Karten) oder an der **Physik** — Kabel, Stecker, Patchfeld,
+Störung. Bei Verdacht auf Letzteres ist das der Beleg, um gezielt einen
+Elektriker mit der Prüfung der Verkabelung an genau diesem Port zu
+beauftragen, statt auf Zuruf zu raten.
+
+Angezeigte Zähler:
+
+| Zähler | Sagt etwas aus über |
+|---|---|
+| CRC/FCS-Fehler | Bitfehler durch Störung, Kabelschaden oder schlechten Crimp — der direkteste Kabel-Indikator |
+| Alignment-Fehler | Bit-Ausrichtungsfehler auf physischer Ebene — ebenfalls Kabel/Hardware |
+| Symbol-Fehler | Entsprechung zu FCS-Fehlern auf Leitungscodierungsebene bei Gigabit+-Links |
+| Late Collisions | Klassisches Zeichen für zu langes Kabel oder Duplex-Mismatch |
+| Excessive Collisions | Stark überlastetes Segment oder Duplex-Mismatch |
+| Carrier-Sense-Fehler | Problem beim Erkennen des Trägersignals — meist Hardware/Kabel |
+| Eingehende/Ausgehende Fehler gesamt | Generischer IF-MIB-Zähler als Fallback, falls der Switch die detaillierteren Zähler oben nicht unterstützt |
+
+Alle sechs oberen Zähler sollten auf einem gesunden Vollduplex-Link
+**dauerhaft bei 0 bleiben**. Steht einer davon ungleich 0 und wächst
+weiter, ist das ein starkes Indiz für ein physisches Problem an genau
+diesem Port oder Kabel.
+
+**Nutzung:**
+
+1. **SCHNAPPSCHUSS LADEN** — liest die aktuellen (kumulativen, seit dem
+   letzten Switch-Neustart zählenden) Werte. Zähler, die schon jetzt
+   ungleich 0 sind, werden rot hervorgehoben.
+2. **ALS BASIS MERKEN** — merkt sich den zuletzt geladenen Schnappschuss
+   als Vergleichspunkt.
+3. Etwas Zeit vergehen lassen (z. B. Kabel bewegen/wackeln, um einen
+   Wackelkontakt zu provozieren, oder einfach eine Weile Traffic
+   laufen lassen) und erneut **SCHNAPPSCHUSS LADEN** klicken — die
+   Spalte „seit Basis" zeigt jetzt die Differenz seit dem gemerkten
+   Zeitpunkt. So lässt sich sagen „12 CRC-Fehler in den letzten 2
+   Minuten", statt nur eine nicht einordenbare Gesamtsumme zu sehen.
+4. **Basis löschen** setzt den Vergleichspunkt zurück.
+
+Zeigt ein Zähler „nicht verfügbar": Der Switch unterstützt diese
+konkrete MIB nicht vollständig — betrifft meist nur die spezielleren
+EtherLike-MIB-Zähler, nicht die generischen IF-MIB-Fehlerzähler.
+
 ---
 
 ## VERWALTUNG

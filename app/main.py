@@ -18,7 +18,7 @@ from app.collectors.dhcp import discover_dhcp
 from app.collectors.reach import ping_test, scan_subnet
 from app.collectors.iperf import run_iperf
 from app.collectors.snmp import (resolve_ifindex, get_current_alias, set_port_description,
-    get_vlan_state, set_vlan_state)
+    get_vlan_state, set_vlan_state, get_port_errors)
 from app.export_xlsx import export_xlsx, COLUMNS, DEFAULT_COLUMNS
 
 APP_VERSION = "3.1.0"
@@ -428,6 +428,18 @@ def snmp_write(payload: dict = Body(...)):
         raise HTTPException(400, "host, ifindex und description erforderlich")
     community = get_setting("snmp_community") or ""
     return set_port_description(host, community, int(ifindex), description)
+
+
+@app.post("/api/snmp/port_errors")
+def snmp_port_errors(payload: dict = Body(...)):
+    """Ethernet-Fehlerzähler eines Ports lesen (CRC/FCS, Alignment, Late
+    Collisions etc.) — Hinweis auf Kabel-/Hardwareprobleme statt Konfiguration."""
+    host = payload.get("host")
+    ifindex = payload.get("ifindex")
+    if not host or not ifindex:
+        raise HTTPException(400, "host und ifindex erforderlich")
+    community = get_setting("snmp_community") or ""
+    return get_port_errors(host, community, int(ifindex))
 
 
 @app.post("/api/snmp/vlan_state")

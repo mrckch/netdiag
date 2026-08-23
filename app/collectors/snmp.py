@@ -9,6 +9,7 @@ Nutzt net-snmp CLI-Tools (snmpwalk/snmpset) — robust und überall verfügbar.
 """
 import re
 import subprocess
+import time
 
 IFNAME_OID = "1.3.6.1.2.1.31.1.1.1.1"   # ifName
 IFDESCR_OID = "1.3.6.1.2.1.2.2.1.2"      # ifDescr
@@ -312,6 +313,75 @@ def set_vlan_state(host: str, community: str, ifindex: int,
         result["success"] = True
     except FileNotFoundError:
         result["error"] = "snmp-Tools nicht installiert"
+    except subprocess.TimeoutExpired:
+        result["error"] = "SNMP Timeout"
+    return result
+
+
+# ================================================================
+# Port-Fehlerstatistik: IF-MIB (allgemeine Zaehler) + EtherLike-MIB
+# (RFC 3635, physikalische Ethernet-Fehler). Rein lesend — kein Write.
+# Ziel: Hinweis, ob ein Problem eher an Kabel/Stecker/Hardware liegt
+# (CRC/FCS-, Alignment-Fehler, Late Collisions, Carrier-Sense-Fehler)
+# statt an Konfiguration.
+# ================================================================
+
+# (Anzeigename, interner Schluessel, OID) — Reihenfolge = Reihenfolge im
+# kombinierten snmpget-Aufruf (ein Request, mehrere OIDs).
+PORT_ERROR_FIELDS = [
+    ("fcs_errors", "1.3.6.1.2.1.10.7.2.1.3"),           # dot3StatsFCSErrors (CRC)
+    ("alignment_errors", "1.3.6.1.2.1.10.7.2.1.2"),      # dot3StatsAlignmentErrors
+    ("symbol_errors", "1.3.6.1.2.1.10.7.2.1.13"),        # dot3StatsSymbolErrors (Gigabit+)
+    ("late_collisions", "1.3.6.1.2.1.10.7.2.1.8"),       # dot3StatsLateCollisions
+    ("excessive_collisions", "1.3.6.1.2.1.10.7.2.1.9"),  # dot3StatsExcessiveCollisions
+    ("carrier_sense_errors", "1.3.6.1.2.1.10.7.2.1.11"), # dot3StatsCarrierSenseErrors
+    ("if_in_errors", "1.3.6.1.2.1.2.2.1.14"),            # ifInErrors (IF-MIB, Fallback)
+    ("if_out_errors", "1.3.6.1.2.1.2.2.1.20"),           # ifOutErrors (IF-MIB, Fallback)
+]
+
+# Diese Zaehler sollten auf einem gesunden Vollduplex-Link praktisch immer
+# bei 0 bleiben — ungleich 0 (und wachsend) ist ein starkes Indiz fuer ein
+# physisches Problem (Kabel, Stecker, Stoerung), nicht fuer Konfiguration.
+PHYSICAL_LAYER_FIELDS = {
+    "fcs_errors", "alignment_errors", "symbol_errors",
+    "late_collisions", "excessive_collisions", "carrier_sense_errors",
+}
+
+
+def parse_port_error_output(stdout: str) -> dict:
+    """Ordnet die Zeilen eines kombinierten snmpget-Aufrufs (-Oqv, mehrere
+    OIDs in der Reihenfolge von PORT_ERROR_FIELDS) den Zaehler-Schluesseln
+    zu. Reine Funktion, testbar ohne SNMP-Zugriff."""
+    lines = stdout.strip("\n").split("\n") if stdout.strip("\n") else []
+    counters = {}
+    for i, (key, _oid) in enumerate(PORT_ERROR_FIELDS):
+        line = lines[i].strip() if i < len(lines) else ""
+        counters[key] = int(line) if line.lstrip("-").isdigit() else None
+    return counters
+
+
+def get_port_errors(host: str, community: str, ifindex: int) -> dict:
+    """Liest Ethernet-Fehlerzaehler eines Ports (kumulativ seit letztem
+    Switch-Neustart bzw. Zaehler-Reset). Nicht jeder Switch unterstuetzt
+    die EtherLike-MIB vollstaendig — nicht lesbare Werte werden als None
+    zurueckgegeben, statt den ganzen Aufruf fehlschlagen zu lassen."""
+    result = {"ifindex": ifindex, "read_at": int(time.time()),
+              "counters": {}, "error": None}
+    if not community:
+        result["error"] = "Keine SNMP-Community konfiguriert"
+        return result
+    oids = [f"{oid}.{ifindex}" for _, oid in PORT_ERROR_FIELDS]
+    try:
+        out = subprocess.run(
+            ["snmpget", "-v2c", "-c", community, "-Oqv", "-t", "3", "-r", "1", host, *oids],
+            capture_output=True, text=True, timeout=20,
+        )
+        result["counters"] = parse_port_error_output(out.stdout)
+        if not any(v is not None for v in result["counters"].values()):
+            result["error"] = ("Switch liefert keine Fehlerzähler (IF-MIB/EtherLike-MIB "
+                               "nicht unterstützt oder Community/ifIndex falsch)")
+    except FileNotFoundError:
+        result["error"] = "snmp-Tools nicht installiert (apt install snmp)"
     except subprocess.TimeoutExpired:
         result["error"] = "SNMP Timeout"
     return result

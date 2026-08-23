@@ -44,6 +44,8 @@ let PENDING = null;          // { kind, result } — ungespeichertes Ergebnis
 let LAST_SWITCH = null;      // { host, portName } aus letztem Autotest (für Port-Aktionen)
 let PA_IFINDEX = null;       // aufgelöster ifIndex im Port-Aktionen-Tab
 let VLAN_CURRENT = null;     // zuletzt gelesener VLAN-Zustand
+let ERR_LATEST = null;       // letzter Fehlerzähler-Schnappschuss {counters, read_at}
+let ERR_BASELINE = null;     // als Basis gemerkter Schnappschuss, fuer Delta-Anzeige
 let CURRENT_OUTLET = null;   // im Kataster-Detail geöffnete Dose
 
 async function loadTree() { TREE = await api("/api/tree"); }
@@ -126,6 +128,8 @@ async function runAutotest() {
     LAST_SWITCH = (swIp && swPort) ? { host: swIp, portName: swPort, name: swName } : null;
     PA_IFINDEX = null;
     VLAN_CURRENT = null;
+    ERR_LATEST = null;
+    ERR_BASELINE = null;
 
     const sniff = data.sniff;
     setBody("card-vlan", [
@@ -482,7 +486,97 @@ function renderPortAktionen() {
   $("#vlanState").textContent = "—";
   $("#vlanEdit").style.display = "none";
   $("#vlanStatus").textContent = "";
+  $("#errTable").style.display = "none";
+  $("#errBaseline").disabled = true;
+  $("#errBaselineClear").style.display = "none";
+  $("#errBaselineInfo").textContent = "";
+  $("#errStatus").textContent = "";
 }
+
+const ERR_LABELS = {
+  fcs_errors: "CRC/FCS-Fehler",
+  alignment_errors: "Alignment-Fehler",
+  symbol_errors: "Symbol-Fehler (Gigabit+)",
+  late_collisions: "Late Collisions",
+  excessive_collisions: "Excessive Collisions",
+  carrier_sense_errors: "Carrier-Sense-Fehler",
+  if_in_errors: "Eingehende Fehler gesamt",
+  if_out_errors: "Ausgehende Fehler gesamt",
+};
+// Zaehler, die auf einem gesunden Vollduplex-Link praktisch immer 0 bleiben —
+// ungleich 0 ist ein starkes Indiz fuer Kabel/Stecker/Hardware statt Konfiguration.
+const ERR_PHYSICAL_KEYS = new Set([
+  "fcs_errors", "alignment_errors", "symbol_errors",
+  "late_collisions", "excessive_collisions", "carrier_sense_errors",
+]);
+
+function renderErrTable() {
+  const body = $("#errTableBody");
+  body.innerHTML = "";
+  if (!ERR_LATEST) { $("#errTable").style.display = "none"; return; }
+  for (const [key, label] of Object.entries(ERR_LABELS)) {
+    const cur = ERR_LATEST.counters[key];
+    const row = document.createElement("tr");
+    if (cur === null || cur === undefined) {
+      row.className = "err-row-na";
+      row.innerHTML = `<td>${esc(label)}</td><td>nicht verfügbar</td><td>—</td>`;
+      body.appendChild(row);
+      continue;
+    }
+    let deltaText = "—";
+    let isBad = false;
+    if (ERR_BASELINE && ERR_BASELINE.counters[key] != null) {
+      const delta = cur - ERR_BASELINE.counters[key];
+      deltaText = delta >= 0 ? String(delta) : "? (Zähler zurückgesetzt)";
+      isBad = ERR_PHYSICAL_KEYS.has(key) && delta > 0;
+    } else if (ERR_PHYSICAL_KEYS.has(key) && cur > 0) {
+      isBad = true; // kein Baseline gesetzt, aber schon jetzt ungleich Null
+    }
+    if (isBad) row.className = "err-row-bad";
+    row.innerHTML = `<td>${esc(label)}</td><td>${esc(cur)}</td><td>${esc(deltaText)}</td>`;
+    body.appendChild(row);
+  }
+  $("#errTable").style.display = "table";
+}
+
+async function loadErrSnapshot() {
+  $("#errStatus").textContent = "lade Fehlerzähler …";
+  try {
+    if (!PA_IFINDEX) {
+      const prev = await postJson("/api/snmp/preview", {
+        host: LAST_SWITCH.host, port_name: LAST_SWITCH.portName, outlet_id: null,
+      });
+      if (prev.error) { $("#errStatus").textContent = `Fehler: ${prev.error}`; return; }
+      PA_IFINDEX = prev.ifindex;
+    }
+    const data = await postJson("/api/snmp/port_errors", {
+      host: LAST_SWITCH.host, ifindex: PA_IFINDEX,
+    });
+    if (data.error) { $("#errStatus").textContent = `Fehler: ${data.error}`; return; }
+    ERR_LATEST = data;
+    renderErrTable();
+    $("#errBaseline").disabled = false;
+    $("#errStatus").textContent = `Stand: ${new Date(data.read_at * 1000).toLocaleTimeString()}`;
+  } catch (e) { $("#errStatus").textContent = `Fehler: ${e.message}`; }
+}
+$("#errSnapshot").addEventListener("click", loadErrSnapshot);
+
+$("#errBaseline").addEventListener("click", () => {
+  if (!ERR_LATEST) return;
+  ERR_BASELINE = ERR_LATEST;
+  $("#errBaselineInfo").textContent =
+    `Basis gesetzt um ${new Date(ERR_BASELINE.read_at * 1000).toLocaleTimeString()} — ` +
+    `weitere Schnappschüsse zeigen die Differenz seitdem.`;
+  $("#errBaselineClear").style.display = "inline-block";
+  renderErrTable();
+});
+
+$("#errBaselineClear").addEventListener("click", () => {
+  ERR_BASELINE = null;
+  $("#errBaselineInfo").textContent = "";
+  $("#errBaselineClear").style.display = "none";
+  renderErrTable();
+});
 
 $("#descrPreview").addEventListener("click", async () => {
   $("#descrState").textContent = "löse ifIndex auf …";

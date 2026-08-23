@@ -1,6 +1,7 @@
 """API-Tests über FastAPI TestClient (DB liegt via NETDIAG_DATA_DIR im Temp)."""
 from fastapi.testclient import TestClient
 
+from app.db import get_conn
 from app.main import app, APP_VERSION
 
 client = TestClient(app)
@@ -65,3 +66,23 @@ def test_snmp_community_never_leaks():
     client.put("/api/settings", json={"snmp_community": ""})
     r = client.get("/api/settings")
     assert r.json()["snmp_community_set"] == "1"
+
+
+def test_port_errors_requires_host_and_ifindex():
+    r = client.post("/api/snmp/port_errors", json={})
+    assert r.status_code == 400
+
+
+def test_port_errors_without_community():
+    # Direkt in der DB leeren, da die Settings-API einen leeren Wert als
+    # "unveraendert lassen" behandelt (siehe test_snmp_community_never_leaks).
+    conn = get_conn()
+    conn.execute("UPDATE settings SET value = '' WHERE key = 'snmp_community'")
+    conn.commit()
+    conn.close()
+
+    r = client.post("/api/snmp/port_errors", json={"host": "10.0.0.1", "ifindex": 5})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["error"] == "Keine SNMP-Community konfiguriert"
+    assert body["counters"] == {}

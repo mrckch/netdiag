@@ -378,3 +378,15 @@ dialog input {
   font-size: 13px;
 }
 .btn-danger:disabled { opacity: 0.4; cursor: default; }
+
+.pa-errstat-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+.pa-errstat-actions .btn-inline:disabled { opacity: 0.4; cursor: default; }
+.err-table {
+  width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px;
+}
+.err-table th, .err-table td {
+  text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--panel-edge);
+}
+.err-table th { color: var(--text-dim); font-weight: 500; }
+.err-table tr.err-row-bad td { color: var(--bad); font-weight: 700; }
+.err-table tr.err-row-na td { color: var(--text-dim); font-style: italic; }

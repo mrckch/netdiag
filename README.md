@@ -49,6 +49,10 @@ Messen ist nur über LAN-Interfaces möglich (WLAN wird ausgefiltert).
   - **VLAN setzen** (PVID + tagged VLANs via Q-BRIDGE-MIB) — mit
     Zustandsanzeige, Diff und doppelter Bestätigung. **Experimentell:**
     vor produktivem Einsatz gegen die konkreten Switch-Modelle verifizieren
+  - **Port-Fehlerstatistik** (rein lesend, IF-MIB/EtherLike-MIB) —
+    CRC/FCS-, Alignment-Fehler, Late Collisions u.a. mit
+    Vorher/Nachher-Delta, als Beleg für Kabel-/Hardwareprobleme statt
+    Konfigurationsfehler
 - **XLSX-Export:** sortiert nach Etage → Raum → Dose, Spalten frei wählbar,
   letzte Messung oder komplette Historie, optionaler Zeitraumfilter
 - **DB-Backup/-Restore** direkt aus der UI (SQLite-Snapshot via `VACUUM INTO`,
