@@ -275,8 +275,10 @@ def set_vlan_state(host: str, community: str, ifindex: int,
                 want_untagged = (vid == pvid)
                 new_untagged = _set_port_in_bitmap(untagged, baseport, want_untagged)
                 if new_untagged != untagged:
-                    ok, msg = _set_hex(host, community, f"{VLAN_STATIC_UNTAGGED_OID}.{vid}", new_untagged)
-                    result["steps"].append(f"VLAN {vid} untagged={want_untagged}: {'ok' if ok else msg}")
+                    ok, msg = _set_hex(
+                        host, community, f"{VLAN_STATIC_UNTAGGED_OID}.{vid}", new_untagged)
+                    result["steps"].append(
+                        f"VLAN {vid} untagged={want_untagged}: {'ok' if ok else msg}")
                     if not ok:
                         result["error"] = f"Untagged-Write VLAN {vid} fehlgeschlagen: {msg}"
                         return result

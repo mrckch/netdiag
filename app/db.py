@@ -1,11 +1,14 @@
 """SQLite-Persistenz für netdiag: Etagen, Räume, Dosen, Gerätetypen,
 Messungen, Settings. Eine Datei, Schema-Version via PRAGMA user_version."""
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "data" / "netdiag.db"
+DATA_DIR = Path(os.environ.get("NETDIAG_DATA_DIR",
+                               Path(__file__).parent.parent / "data"))
+DB_PATH = DATA_DIR / "netdiag.db"
 SCHEMA_VERSION = 2
 
 DEFAULT_DEVICE_TYPES = [
@@ -32,6 +35,8 @@ def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 

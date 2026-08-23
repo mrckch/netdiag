@@ -5,6 +5,12 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
+// HTML-Escape für alle Werte aus dem Netz (nmap-Hostnamen, LLDP-Switch-Namen
+// usw.) und Nutzereingaben, bevor sie per innerHTML gerendert werden.
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[c]));
+
 async function api(path, opts = {}) {
   const res = await fetch(path, opts);
   if (!res.ok) {
@@ -280,7 +286,7 @@ $("#runScan").addEventListener("click", async () => {
     data.hosts.forEach((h) => {
       const row = document.createElement("div");
       row.className = "scan-row";
-      row.innerHTML = `<span>${h.ip ?? "—"}</span><span>${h.hostname ?? h.vendor ?? ""}</span><span>${h.mac ?? "—"}</span>`;
+      row.innerHTML = `<span>${esc(h.ip ?? "—")}</span><span>${esc(h.hostname ?? h.vendor ?? "")}</span><span>${esc(h.mac ?? "—")}</span>`;
       box.appendChild(row);
     });
     if (!data.hosts.length) box.textContent = "keine Geräte gefunden";
@@ -307,7 +313,7 @@ async function loadKataster() {
       row.className = "meas-row";
       row.innerHTML =
         `<span>${fmtTs(m.started_at)}</span>` +
-        `<span>${m.kind} · ${m.speed ?? ""} ${m.switch_name ?? ""} ${m.switch_port ?? ""}</span>`;
+        `<span>${esc(m.kind)} · ${esc(m.speed ?? "")} ${esc(m.switch_name ?? "")} ${esc(m.switch_port ?? "")}</span>`;
       const btn = document.createElement("button");
       btn.className = "btn-inline";
       btn.textContent = "zuordnen…";
@@ -323,18 +329,18 @@ async function loadKataster() {
     const fl = document.createElement("details");
     fl.className = "tree-floor";
     fl.open = true;
-    fl.innerHTML = `<summary>${f.name}</summary>`;
+    fl.innerHTML = `<summary>${esc(f.name)}</summary>`;
     f.rooms.forEach((r) => {
       const rm = document.createElement("details");
       rm.className = "tree-room";
-      rm.innerHTML = `<summary>${r.name}</summary>`;
+      rm.innerHTML = `<summary>${esc(r.name)}</summary>`;
       r.outlets.forEach((o) => {
         const row = document.createElement("div");
         row.className = "tree-outlet";
         const patch = o.patch_panel_name ? ` · ${o.patch_panel_name}/${o.patch_panel_port ?? "?"}` : "";
         row.innerHTML =
-          `<span class="outlet-icon">${o.device_icon ?? "·"}</span>` +
-          `<span class="outlet-label">${o.label}<span class="outlet-patch">${patch}</span></span>` +
+          `<span class="outlet-icon">${esc(o.device_icon ?? "·")}</span>` +
+          `<span class="outlet-label">${esc(o.label)}<span class="outlet-patch">${esc(patch)}</span></span>` +
           `<span class="outlet-meta">${o.n_measurements} Messung(en)</span>`;
         row.addEventListener("click", () => showOutletDetail(o, r, f));
         rm.appendChild(row);
@@ -424,10 +430,10 @@ async function showOutletDetail(outlet, room, floor) {
     const summary = m.kind === "iperf"
       ? `iperf: ↓${m.iperf_mbps ?? "?"} Mbit/s`
       : `${m.speed ?? "?"} ${m.duplex ?? ""} · VLAN ${m.vlan_ids ?? "—"} · ${m.switch_name ?? "?"} ${m.switch_port ?? ""} · DHCP ${m.dhcp_ok ? "ok" : "✗"}`;
-    row.innerHTML = `<span>${fmtTs(m.started_at)}</span><span>${summary}</span>`;
+    row.innerHTML = `<span>${fmtTs(m.started_at)}</span><span>${esc(summary)}</span>`;
     if (m._diffs?.length) {
       row.insertAdjacentHTML("beforeend",
-        `<span class="diff-hint" title="${m._diffs.join("\n")}">⚠ geändert</span>`);
+        `<span class="diff-hint" title="${esc(m._diffs.join("\n"))}">⚠ geändert</span>`);
     }
     const del = document.createElement("button");
     del.className = "btn-inline";
@@ -488,8 +494,8 @@ $("#descrPreview").addEventListener("click", async () => {
     if (prev.error) { $("#descrState").textContent = `Fehler: ${prev.error}`; return; }
     PA_IFINDEX = prev.ifindex;
     $("#descrState").innerHTML =
-      `Port: <b>${prev.matched_name}</b> (ifIndex ${prev.ifindex})<br>` +
-      `Aktuell: <b>${prev.current_description ?? "(leer)"}</b>`;
+      `Port: <b>${esc(prev.matched_name)}</b> (ifIndex ${esc(prev.ifindex)})<br>` +
+      `Aktuell: <b>${esc(prev.current_description ?? "(leer)")}</b>`;
     $("#descrInput").value = prev.proposed_description || "";
     $("#descrEdit").style.display = "block";
   } catch (e) { $("#descrState").textContent = `Fehler: ${e.message}`; }
@@ -523,8 +529,8 @@ $("#vlanLoad").addEventListener("click", async () => {
     if (state.error) { $("#vlanState").textContent = `Fehler: ${state.error}`; return; }
     VLAN_CURRENT = state;
     $("#vlanState").innerHTML =
-      `PVID (untagged): <b>${state.pvid ?? "?"}</b><br>` +
-      `Tagged: <b>${state.tagged_vlans.join(", ") || "keine"}</b>`;
+      `PVID (untagged): <b>${esc(state.pvid ?? "?")}</b><br>` +
+      `Tagged: <b>${esc(state.tagged_vlans.join(", ") || "keine")}</b>`;
     $("#vlanPvid").value = state.pvid ?? "";
     $("#vlanTagged").value = state.tagged_vlans.join(",");
     $("#vlanEdit").style.display = "block";
@@ -544,7 +550,7 @@ function updateVlanDiff() {
   const oldT = VLAN_CURRENT.tagged_vlans.join(","), newT = newTagged.join(",");
   if (oldT !== newT) diffs.push(`Tagged: [${oldT || "—"}] → [${newT || "—"}]`);
   $("#vlanDiff").innerHTML = diffs.length
-    ? "Änderungen:<br>" + diffs.map(d => `• ${d}`).join("<br>")
+    ? "Änderungen:<br>" + diffs.map(d => `• ${esc(d)}`).join("<br>")
     : "keine Änderungen";
   return diffs;
 }
@@ -555,8 +561,8 @@ $("#vlanWrite").addEventListener("click", () => {
   const diffs = updateVlanDiff();
   if (!diffs || !diffs.length) { alert("Keine Änderungen."); return; }
   $("#vlanConfirmDiff").innerHTML =
-    `Switch: <b>${LAST_SWITCH.host}</b>, Port: <b>${LAST_SWITCH.portName}</b><br>` +
-    diffs.map(d => `• ${d}`).join("<br>");
+    `Switch: <b>${esc(LAST_SWITCH.host)}</b>, Port: <b>${esc(LAST_SWITCH.portName)}</b><br>` +
+    diffs.map(d => `• ${esc(d)}`).join("<br>");
   $("#vlanConfirmCheck").checked = false;
   $("#vlanConfirmGo").disabled = true;
   $("#vlanConfirmDialog").showModal();
@@ -593,7 +599,7 @@ $("#openExport").addEventListener("click", async () => {
   meta.columns.forEach((c) => {
     const label = document.createElement("label");
     label.className = "check-row";
-    label.innerHTML = `<input type="checkbox" value="${c.key}" ${meta.default.includes(c.key) ? "checked" : ""}> ${c.label}`;
+    label.innerHTML = `<input type="checkbox" value="${esc(c.key)}" ${meta.default.includes(c.key) ? "checked" : ""}> ${esc(c.label)}`;
     box.appendChild(label);
   });
   $("#exportDialog").showModal();
@@ -632,7 +638,7 @@ async function loadVerwaltung() {
   TREE.floors.forEach((f) => {
     const row = document.createElement("div");
     row.className = "admin-row";
-    row.innerHTML = `<span>${f.name}</span>`;
+    row.innerHTML = `<span>${esc(f.name)}</span>`;
     const del = document.createElement("button");
     del.className = "btn-inline"; del.textContent = "✕";
     del.addEventListener("click", () => deleteWithConfirm(`/api/floors/${f.id}`, `Etage "${f.name}"`));
@@ -656,7 +662,7 @@ async function loadVerwaltung() {
   DEVICE_TYPES.forEach((dt) => {
     const row = document.createElement("div");
     row.className = "admin-row";
-    row.innerHTML = `<span>${dt.icon} ${dt.name}</span>`;
+    row.innerHTML = `<span>${esc(dt.icon)} ${esc(dt.name)}</span>`;
     const del = document.createElement("button");
     del.className = "btn-inline"; del.textContent = "✕";
     del.addEventListener("click", async () => {
@@ -670,7 +676,11 @@ async function loadVerwaltung() {
 
   const settings = await api("/api/settings");
   $("#setIperf").value = settings.iperf_server || "";
-  $("#setCommunity").value = settings.snmp_community || "";
+  // Community wird vom Server nie im Klartext geliefert — leer lassen = unverändert
+  $("#setCommunity").value = "";
+  $("#setCommunity").placeholder = settings.snmp_community_set === "1"
+    ? "gespeichert — leer lassen = unverändert"
+    : "z.B. private";
   $("#setTemplate").value = settings.snmp_descr_template || "";
 }
 
@@ -681,7 +691,7 @@ function renderRoomAdmin() {
   (floor?.rooms || []).forEach((r) => {
     const row = document.createElement("div");
     row.className = "admin-row";
-    row.innerHTML = `<span>${r.name}</span>`;
+    row.innerHTML = `<span>${esc(r.name)}</span>`;
     const del = document.createElement("button");
     del.className = "btn-inline"; del.textContent = "✕";
     del.addEventListener("click", () => deleteWithConfirm(`/api/rooms/${r.id}`, `Raum "${r.name}"`));

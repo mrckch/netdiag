@@ -24,6 +24,29 @@ def ping_test(target: str, count: int = 4) -> dict:
     return result
 
 
+def parse_scan_output(text: str) -> list[dict]:
+    """Hosts aus 'nmap -sn'-Textausgabe extrahieren (reine Funktion, testbar)."""
+    hosts = []
+    for block in text.split("Nmap scan report for ")[1:]:
+        lines = block.splitlines()
+        if not lines:
+            continue
+        first_line = lines[0].strip()
+        ip_match = re.search(r"\(?([\d.]+)\)?$", first_line)
+        ip = ip_match.group(1) if ip_match else None
+        hostname = first_line.split(" (")[0] if " (" in first_line else None
+        mac_match = re.search(r"MAC Address:\s*([0-9A-Fa-f:]+)\s*(\((.+)\))?", block)
+        hosts.append(
+            {
+                "ip": ip,
+                "hostname": hostname if hostname and hostname != ip else None,
+                "mac": mac_match.group(1) if mac_match else None,
+                "vendor": mac_match.group(3) if mac_match and mac_match.group(3) else None,
+            }
+        )
+    return hosts
+
+
 def scan_subnet(subnet: str) -> dict:
     """z.B. subnet='192.168.1.0/24'. Kann einige Sekunden dauern."""
     result = {"subnet": subnet, "hosts": [], "error": None}
@@ -31,20 +54,7 @@ def scan_subnet(subnet: str) -> dict:
         out = subprocess.run(
             ["nmap", "-sn", subnet], capture_output=True, text=True, timeout=60
         )
-        blocks = out.stdout.split("Nmap scan report for ")[1:]
-        for block in blocks:
-            first_line = block.splitlines()[0]
-            ip_match = re.search(r"\(?([\d.]+)\)?$", first_line)
-            hostname = first_line.split(" (")[0] if " (" in first_line else None
-            mac_match = re.search(r"MAC Address:\s*([0-9A-Fa-f:]+)\s*(\((.+)\))?", block)
-            result["hosts"].append(
-                {
-                    "ip": ip_match.group(1) if ip_match else None,
-                    "hostname": hostname if hostname and hostname != ip_match.group(1) else None,
-                    "mac": mac_match.group(1) if mac_match else None,
-                    "vendor": mac_match.group(3) if mac_match and mac_match.group(3) else None,
-                }
-            )
+        result["hosts"] = parse_scan_output(out.stdout)
     except FileNotFoundError:
         result["error"] = "nmap nicht installiert"
     except subprocess.TimeoutExpired:

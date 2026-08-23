@@ -3,6 +3,7 @@
 Wählbar: Spalten, letzte-Messung-pro-Dose vs. Historie, Zeitraum.
 """
 import datetime
+import os
 import tempfile
 
 from openpyxl import Workbook
@@ -110,6 +111,7 @@ def export_xlsx(columns: list[str], latest_only: bool = True,
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
 
-    path = tempfile.mktemp(suffix=".xlsx", prefix="netdiag-export-")
+    fd, path = tempfile.mkstemp(suffix=".xlsx", prefix="netdiag-export-")
+    os.close(fd)
     wb.save(path)
     return path

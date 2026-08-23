@@ -1,6 +1,86 @@
-"""Switch-Erkennung via LLDP (lldpd/lldpcli JSON-Output)."""
+"""Switch-Erkennung via LLDP (lldpd/lldpcli).
+
+Der Parser versteht beide lldpcli-JSON-Varianten:
+- "json0": alles Listen von Dicts, Blattwerte als {"value": ...}
+- "json":  verschachtelte Dicts, chassis nach Switch-Namen gekeyt
+"""
 import json
 import subprocess
+
+
+def _first(x):
+    """Erstes Element, falls Liste — json0 verpackt alles in Listen."""
+    if isinstance(x, list):
+        return x[0] if x else None
+    return x
+
+
+def _val(x):
+    """Blattwert extrahieren: json0 liefert {"value": ...}, json den Wert direkt."""
+    x = _first(x)
+    if isinstance(x, dict):
+        return x.get("value")
+    return x
+
+
+def _iface_entries(interfaces) -> list[dict]:
+    """Interface-Knoten beider Formate auf eine Liste von Einträgen normieren."""
+    if interfaces is None:
+        return []
+    if isinstance(interfaces, list):
+        return [e for e in interfaces if isinstance(e, dict)]
+    if isinstance(interfaces, dict):
+        if "chassis" in interfaces or "port" in interfaces:
+            return [interfaces]  # direkt ein Eintrag
+        # "json"-Format: {ifname: {...}} — ggf. mehrere Interfaces
+        out = []
+        for v in interfaces.values():
+            if isinstance(v, dict):
+                out.append(v)
+            elif isinstance(v, list):
+                out.extend(e for e in v if isinstance(e, dict))
+        return out
+    return []
+
+
+def _chassis_info(chassis) -> tuple[str | None, dict]:
+    """(Switch-Name, Chassis-Dict) aus beiden Formaten."""
+    c = _first(chassis)
+    if not isinstance(c, dict):
+        return None, {}
+    if "name" in c or "id" in c or "mgmt-ip" in c:
+        return _val(c.get("name")), c
+    # "json"-Format: {switchname: {...}}
+    for name, info in c.items():
+        if isinstance(info, dict):
+            return _val(info.get("name")) or name, info
+    return None, {}
+
+
+def parse_lldp_json(data: dict) -> list[dict]:
+    """Nachbarn aus lldpcli-JSON extrahieren (reine Funktion, testbar)."""
+    neighbors = []
+    lldp = _first(data.get("lldp")) or {}
+    if not isinstance(lldp, dict):
+        return neighbors
+    for entry in _iface_entries(lldp.get("interface")):
+        name, chassis_info = _chassis_info(entry.get("chassis"))
+        port = _first(entry.get("port")) or {}
+        vlan = _first(entry.get("vlan")) or {}
+
+        mgmt = chassis_info.get("mgmt-ip")
+        mgmt_ip = _val(mgmt)
+        if mgmt_ip is None and isinstance(mgmt, list) and mgmt:
+            mgmt_ip = _val(mgmt[0])
+
+        neighbors.append({
+            "switch_name": name,
+            "switch_mgmt_ip": mgmt_ip,
+            "port_id": _val(port.get("id")) if isinstance(port, dict) else None,
+            "port_descr": _val(port.get("descr")) if isinstance(port, dict) else None,
+            "vlan": vlan.get("vlan-id") if isinstance(vlan, dict) else None,
+        })
+    return neighbors
 
 
 def get_lldp_neighbors(interface: str) -> dict:
@@ -17,40 +97,7 @@ def get_lldp_neighbors(interface: str) -> dict:
             return result
 
         data = json.loads(out.stdout or "{}")
-        lldp = data.get("lldp", {})
-        interfaces = lldp.get("interface", [])
-        if isinstance(interfaces, dict):
-            interfaces = [interfaces]
-
-        for iface_entry in interfaces:
-            chassis = iface_entry.get("chassis", {})
-            chassis_name = next(iter(chassis.keys()), None) if chassis else None
-            chassis_info = chassis.get(chassis_name, {}) if chassis_name else {}
-
-            port = iface_entry.get("port", {})
-            vlan = iface_entry.get("vlan", {})
-
-            neighbor = {
-                "switch_name": chassis_info.get("name", {}).get("value")
-                if isinstance(chassis_info.get("name"), dict)
-                else chassis_info.get("name"),
-                "switch_mgmt_ip": None,
-                "port_id": port.get("id", {}).get("value")
-                if isinstance(port.get("id"), dict)
-                else None,
-                "port_descr": port.get("descr"),
-                "vlan": vlan.get("vlan-id") if isinstance(vlan, dict) else None,
-            }
-
-            mgmt = chassis_info.get("mgmt-ip")
-            if mgmt:
-                if isinstance(mgmt, list):
-                    neighbor["switch_mgmt_ip"] = mgmt[0]
-                else:
-                    neighbor["switch_mgmt_ip"] = mgmt
-
-            result["neighbors"].append(neighbor)
-
+        result["neighbors"] = parse_lldp_json(data)
         result["found"] = len(result["neighbors"]) > 0
 
     except FileNotFoundError:

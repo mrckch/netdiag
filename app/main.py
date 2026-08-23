@@ -1,13 +1,15 @@
+import os
 import shutil
-import subprocess
+import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import FastAPI, Body, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
-from app import db
 from app.db import get_conn, init_db, save_measurement, get_setting, DB_PATH, SCHEMA_VERSION
 from app.collectors.link import get_link_info
 from app.collectors.lldp import get_lldp_neighbors
@@ -19,7 +21,10 @@ from app.collectors.snmp import (resolve_ifindex, get_current_alias, set_port_de
     get_vlan_state, set_vlan_state)
 from app.export_xlsx import export_xlsx, COLUMNS, DEFAULT_COLUMNS
 
-app = FastAPI(title="netdiag", description="Lokaler Netzwerk-Port-Tester + Kabelkataster")
+APP_VERSION = "3.1.0"
+
+app = FastAPI(title="netdiag", version=APP_VERSION,
+              description="Lokaler Netzwerk-Port-Tester + Kabelkataster")
 init_db()
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -29,6 +34,11 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "version": APP_VERSION, "schema_version": SCHEMA_VERSION}
 
 
 # ---------------------------------------------------------------- Messen
@@ -54,10 +64,17 @@ def autotest(
     interface: str = Query("eth0"),
     sniff_seconds: int = Query(6, ge=2, le=30),
 ):
-    link = get_link_info(interface)
-    lldp = get_lldp_neighbors(interface)
-    sniff = sniff_port(interface, duration=sniff_seconds)
-    dhcp = discover_dhcp(interface)
+    # Collectors parallel: sniff (~6s) und DHCP-Discover (bis 20s) dominieren
+    # die Laufzeit — nebenläufig statt seriell halbiert den Autotest.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        f_link = pool.submit(get_link_info, interface)
+        f_lldp = pool.submit(get_lldp_neighbors, interface)
+        f_sniff = pool.submit(sniff_port, interface, sniff_seconds)
+        f_dhcp = pool.submit(discover_dhcp, interface)
+        link = f_link.result()
+        lldp = f_lldp.result()
+        sniff = f_sniff.result()
+        dhcp = f_dhcp.result()
 
     ping_gateway = None
     if dhcp.get("router"):
@@ -105,7 +122,8 @@ def api_tree():
         for room in f["rooms"]:
             room["outlets"] = [dict(r) for r in conn.execute(
                 """SELECT o.*, dt.name AS device_name, dt.icon AS device_icon,
-                          (SELECT COUNT(*) FROM measurements m WHERE m.outlet_id = o.id) AS n_measurements
+                          (SELECT COUNT(*) FROM measurements m
+                           WHERE m.outlet_id = o.id) AS n_measurements
                    FROM outlets o LEFT JOIN device_types dt ON dt.id = o.device_type_id
                    WHERE o.room_id = ? ORDER BY o.label""", (room["id"],)).fetchall()]
     conn.close()
@@ -124,7 +142,7 @@ def create_floor(payload: dict = Body(...)):
             (name, payload.get("sort_order", 0)))
         conn.commit()
         return {"id": cur.lastrowid, "name": name}
-    except Exception:
+    except sqlite3.IntegrityError:
         raise HTTPException(409, f"Etage '{name}' existiert bereits")
     finally:
         conn.close()
@@ -158,7 +176,7 @@ def create_room(payload: dict = Body(...)):
         cur = conn.execute("INSERT INTO rooms(floor_id, name) VALUES (?, ?)", (floor_id, name))
         conn.commit()
         return {"id": cur.lastrowid, "name": name}
-    except Exception:
+    except sqlite3.IntegrityError:
         raise HTTPException(409, f"Raum '{name}' existiert in dieser Etage bereits")
     finally:
         conn.close()
@@ -195,7 +213,7 @@ def create_outlet(payload: dict = Body(...)):
              payload.get("patch_panel_name"), payload.get("patch_panel_port")))
         conn.commit()
         return {"id": cur.lastrowid, "label": label}
-    except Exception:
+    except sqlite3.IntegrityError:
         raise HTTPException(409, f"Dose '{label}' existiert in diesem Raum bereits")
     finally:
         conn.close()
@@ -250,7 +268,7 @@ def create_device_type(payload: dict = Body(...)):
                            (name, payload.get("icon") or "❓"))
         conn.commit()
         return {"id": cur.lastrowid}
-    except Exception:
+    except sqlite3.IntegrityError:
         raise HTTPException(409, "Gerätetyp existiert bereits")
     finally:
         conn.close()
@@ -331,18 +349,31 @@ def delete_measurement(mid: int):
 
 # ------------------------------------------------------------ Settings
 
+SECRET_SETTINGS = {"snmp_community"}
+
+
 @app.get("/api/settings")
 def list_settings():
     conn = get_conn()
     rows = conn.execute("SELECT key, value FROM settings").fetchall()
     conn.close()
-    return {r["key"]: r["value"] for r in rows}
+    out = {}
+    for r in rows:
+        if r["key"] in SECRET_SETTINGS:
+            # Nie im Klartext ausliefern — nur ob gesetzt
+            out[r["key"]] = ""
+            out[r["key"] + "_set"] = "1" if r["value"] else "0"
+        else:
+            out[r["key"]] = r["value"]
+    return out
 
 
 @app.put("/api/settings")
 def update_settings(payload: dict = Body(...)):
     conn = get_conn()
     for key, value in payload.items():
+        if key in SECRET_SETTINGS and not str(value):
+            continue  # leeres Feld = unverändert lassen (Wert wird nie zurückgeliefert)
         conn.execute(
             "INSERT INTO settings(key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -448,6 +479,7 @@ def api_export_xlsx(payload: dict = Body(...)):
         path,
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        background=BackgroundTask(os.remove, path),
     )
 
 
@@ -462,6 +494,7 @@ def db_backup():
         snapshot,
         filename=f"netdiag-backup-{time.strftime('%Y%m%d-%H%M')}.db",
         media_type="application/octet-stream",
+        background=BackgroundTask(os.remove, snapshot),
     )
 
 
@@ -472,7 +505,6 @@ async def db_restore(file: UploadFile):
         shutil.copyfileobj(file.file, fh)
 
     # Validierung: ist es SQLite mit passendem Schema?
-    import sqlite3
     try:
         check = sqlite3.connect(tmp)
         version = check.execute("PRAGMA user_version").fetchone()[0]
@@ -504,4 +536,10 @@ async def db_restore(file: UploadFile):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8642)
+    # Default: nur localhost — die API hat keine Auth und kann SNMP-Writes
+    # auslösen. Fernzugriff bewusst freischalten: NETDIAG_HOST=0.0.0.0
+    uvicorn.run(
+        app,
+        host=os.environ.get("NETDIAG_HOST", "127.0.0.1"),
+        port=int(os.environ.get("NETDIAG_PORT", "8642")),
+    )

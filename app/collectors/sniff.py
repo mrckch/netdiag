@@ -26,9 +26,11 @@ def sniff_port(interface: str, duration: int = 8) -> dict:
     eapol_seen = False
     stp_seen = False
     cdp_info = None
+    packet_count = 0
 
     def handle(pkt):
-        nonlocal eapol_seen, stp_seen, cdp_info
+        nonlocal eapol_seen, stp_seen, cdp_info, packet_count
+        packet_count += 1
 
         if pkt.haslayer(Dot1Q):
             vlan_ids.add(pkt[Dot1Q].vlan)
@@ -53,8 +55,7 @@ def sniff_port(interface: str, duration: int = 8) -> dict:
                     pass
 
     try:
-        packets = sniff(iface=interface, timeout=duration, prn=handle, store=False)
-        result["packets_captured"] = None  # store=False, kein Count verfügbar ohne Zähler
+        sniff(iface=interface, timeout=duration, prn=handle, store=False)
     except PermissionError:
         result["error"] = "Keine Berechtigung — Root oder CAP_NET_RAW nötig"
         return result
@@ -62,6 +63,7 @@ def sniff_port(interface: str, duration: int = 8) -> dict:
         result["error"] = f"Sniff-Fehler: {e}"
         return result
 
+    result["packets_captured"] = packet_count
     result["vlan_ids_seen"] = sorted(vlan_ids)
     result["eapol_seen"] = eapol_seen
     result["stp_seen"] = stp_seen
