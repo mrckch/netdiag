@@ -67,6 +67,16 @@ Messen ist nur über LAN-Interfaces möglich (WLAN wird ausgefiltert).
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Lösungen zu allen im Dashboard sichtbaren Fehlermeldungen |
 | [docs/KONZEPT-v3.md](docs/KONZEPT-v3.md) | Designentscheidungen und Domänenmodell |
 
+Alle drei Bedienungs-Dokumente gibt es auch als ein zusammenhängendes
+[PDF](docs/netdiag-dokumentation.pdf) (Titelseite, Inhaltsverzeichnis,
+klickbare interne Links) — praktisch zum Ausdrucken oder Offline-Lesen.
+Neu erzeugen nach Änderungen an den `.md`-Dateien:
+
+```bash
+pip install -r requirements-dev.txt
+python scripts/build_docs_pdf.py
+```
+
 ## Schnellstart (Debian/Ubuntu-basiert)
 
 ```bash

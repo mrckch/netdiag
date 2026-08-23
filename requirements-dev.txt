@@ -1,3 +1,7 @@
 pytest==8.3.3
 httpx==0.27.2
 ruff==0.6.9
+
+# nur für scripts/build_docs_pdf.py (Doku-PDF erzeugen)
+Markdown==3.10.2
+xhtml2pdf==0.2.17
