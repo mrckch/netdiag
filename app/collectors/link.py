@@ -1,6 +1,7 @@
 """Link-Status via ethtool: Speed, Duplex, Link-Detected."""
 import re
 import subprocess
+from pathlib import Path
 
 
 def parse_ethtool(text: str) -> dict:
@@ -22,9 +23,24 @@ def parse_ethtool(text: str) -> dict:
     return parsed
 
 
+def read_mac(interface: str) -> str | None:
+    """MAC des messenden Interfaces.
+
+    Wird mitgespeichert, weil der Switch genau diese Adresse an dem Port lernt,
+    in dem der Tester steckt — damit lässt sich die Messung später herstellerneutral
+    dem richtigen Switch-Port zuordnen (Gegenprobe über die MAC-Tabelle).
+    """
+    try:
+        mac = Path(f"/sys/class/net/{interface}/address").read_text().strip().lower()
+    except OSError:
+        return None
+    return mac or None
+
+
 def get_link_info(interface: str) -> dict:
     result = {
         "interface": interface,
+        "mac": read_mac(interface),
         "link_detected": None,
         "speed": None,
         "duplex": None,

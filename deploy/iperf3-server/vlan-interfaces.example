@@ -1,0 +1,73 @@
+# /etc/network/interfaces.d/vlans  —  Vorlage für DockerVM1 (Schule)
+#
+# Voraussetzung: der Switchport zur hier genutzten NIC ist "hybrid" und führt
+# die VLANs tagged. TRUNK_IF unten auf das reale Interface anpassen (z.B. ens21,
+# wenn eine eigene NIC für den Trunk dazukommt — NICHT ens18/19/20 überschreiben,
+# solange die als Access-Uplinks laufen).
+#
+# Aktivieren:  apt-get install -y vlan
+#              cp vlan-interfaces.example /etc/network/interfaces.d/vlans
+#              ifup ens21.2 ... (oder Reboot)
+#
+# Loose Reverse-Path-Filtering, sonst verwirft der Kernel bei vielen Interfaces
+# in vielen Subnetzen gültige Antwortpakete:
+#   /etc/sysctl.d/99-netdiag-iperf.conf
+#     net.ipv4.conf.all.rp_filter = 2
+#     net.ipv4.conf.default.rp_filter = 2
+
+# --- VLAN 2 (Transfer) ---
+auto ens21.2
+iface ens21.2 inet dhcp
+    vlan-raw-device ens21
+    post-up ip route del default dev ens21.2 2>/dev/null || true
+
+# --- VLAN 120 (Telefon) ---
+auto ens21.120
+iface ens21.120 inet dhcp
+    vlan-raw-device ens21
+    post-up ip route del default dev ens21.120 2>/dev/null || true
+
+# --- VLAN 130 (GManage) ---
+auto ens21.130
+iface ens21.130 inet dhcp
+    vlan-raw-device ens21
+    post-up ip route del default dev ens21.130 2>/dev/null || true
+
+# --- VLAN 140 (Gaeste) ---
+auto ens21.140
+iface ens21.140 inet dhcp
+    vlan-raw-device ens21
+    post-up ip route del default dev ens21.140 2>/dev/null || true
+
+# --- VLAN 148 (Beamer) ---
+auto ens21.148
+iface ens21.148 inet dhcp
+    vlan-raw-device ens21
+    post-up ip route del default dev ens21.148 2>/dev/null || true
+
+# --- VLAN 149 (APs) ---
+auto ens21.149
+iface ens21.149 inet dhcp
+    vlan-raw-device ens21
+    post-up ip route del default dev ens21.149 2>/dev/null || true
+
+# --- VLAN 201 (Verwaltung2) ---
+auto ens21.201
+iface ens21.201 inet dhcp
+    vlan-raw-device ens21
+    post-up ip route del default dev ens21.201 2>/dev/null || true
+
+# --- VLAN 1100 (EndoLAN) ---
+auto ens21.1100
+iface ens21.1100 inet dhcp
+    vlan-raw-device ens21
+    post-up ip route del default dev ens21.1100 2>/dev/null || true
+
+# VLAN 200 (Verwaltung) und 1001 (IServ) sind bereits über die vorhandenen
+# Access-Uplinks ens18 / ens19 abgedeckt, VLAN 1 (Management) über ens20.
+# Erst ergänzen, wenn diese Uplinks wegfallen.
+#
+# Ohne DHCP im VLAN stattdessen statisch, bewusst ohne Gateway:
+#   iface ens21.140 inet static
+#       address 192.168.140.250/24
+#       vlan-raw-device ens21

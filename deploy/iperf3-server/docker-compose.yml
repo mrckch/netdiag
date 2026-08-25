@@ -1,0 +1,25 @@
+# iperf3-Gegenstelle für netdiag (Durchsatzmessung an der Dose).
+#
+# network_mode: host ist hier kein Bequemlichkeits-Shortcut, sondern der Zweck:
+# Der Server soll auf JEDEM Interface des Hosts antworten — auch auf VLAN-
+# Subinterfaces, die später dazukommen (siehe README). iperf3 bindet ohne -B
+# auf 0.0.0.0 und bekommt neue Interfaces damit automatisch mit.
+services:
+  iperf3:
+    build: .
+    image: netdiag/iperf3-server:1
+    container_name: iperf3-server
+    network_mode: host
+    restart: unless-stopped
+    command: ["--server", "--port", "5201"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 5201 || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

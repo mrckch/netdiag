@@ -53,6 +53,12 @@ Messen ist nur über LAN-Interfaces möglich (WLAN wird ausgefiltert).
     CRC/FCS-, Alignment-Fehler, Late Collisions u.a. mit
     Vorher/Nachher-Delta, als Beleg für Kabel-/Hardwareprobleme statt
     Konfigurationsfehler
+- **NetzwerkMonitor-Anbindung:** netdiag überträgt Kabelkataster und Messungen an
+  die Zentrale (`POST /api/netdiag/sync`) — dort werden sie am jeweiligen
+  Switch-Port sichtbar. Offline-fest: gemessen und gespeichert wird immer, jede
+  Messung trägt einen Sync-Marker, abgehakt wird nur, was die Zentrale quittiert.
+  Einrichtung unter *Verwaltung → NETZWERKMONITOR* (Adresse, Testername, Token
+  aus der Zentrale). Ohne Netz am Messort: JSON-Export und späteres Einspielen.
 - **XLSX-Export:** sortiert nach Etage → Raum → Dose, Spalten frei wählbar,
   letzte Messung oder komplette Historie, optionaler Zeitraumfilter
 - **DB-Backup/-Restore** direkt aus der UI (SQLite-Snapshot via `VACUUM INTO`,

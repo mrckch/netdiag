@@ -5,7 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fastapi import FastAPI, Body, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, FastAPI, Body, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
@@ -20,6 +20,7 @@ from app.collectors.iperf import run_iperf
 from app.collectors.snmp import (resolve_ifindex, get_current_alias, set_port_description,
     get_vlan_state, set_vlan_state, get_port_errors)
 from app.export_xlsx import export_xlsx, COLUMNS, DEFAULT_COLUMNS
+from app import sync as sync_mod
 
 APP_VERSION = "3.1.0"
 
@@ -286,7 +287,7 @@ def delete_device_type(dt_id: int):
 # ------------------------------------------------------------ Messungen
 
 @app.post("/api/measurements")
-def save_measurement_endpoint(payload: dict = Body(...)):
+def save_measurement_endpoint(background_tasks: BackgroundTasks, payload: dict = Body(...)):
     """v3: Messung explizit speichern (Ein-Klick mit sticky Dose)."""
     result = payload.get("result")
     if not result:
@@ -294,6 +295,9 @@ def save_measurement_endpoint(payload: dict = Body(...)):
     kind = payload.get("kind", "autotest")
     outlet_id = payload.get("outlet_id")
     mid = save_measurement(result, outlet_id, kind=kind)
+    # Übertragung läuft NACH der Antwort und darf scheitern: die Messung liegt
+    # lokal, der nächste Sync holt sie nach.
+    background_tasks.add_task(sync_mod.push_quietly)
     return {"measurement_id": mid, "outlet_id": outlet_id}
 
 
@@ -349,7 +353,7 @@ def delete_measurement(mid: int):
 
 # ------------------------------------------------------------ Settings
 
-SECRET_SETTINGS = {"snmp_community"}
+SECRET_SETTINGS = {"snmp_community", "monitor_token"}
 
 
 @app.get("/api/settings")
@@ -381,6 +385,36 @@ def update_settings(payload: dict = Body(...)):
     conn.commit()
     conn.close()
     return {"updated": list(payload.keys())}
+
+
+# --------------------------------------------------- NetzwerkMonitor-Sync
+
+@app.get("/api/sync/status")
+def sync_status():
+    return sync_mod.status()
+
+
+@app.post("/api/sync/test")
+def sync_test():
+    try:
+        return sync_mod.test_connection()
+    except sync_mod.SyncNotConfigured as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/sync/now")
+def sync_now():
+    try:
+        return sync_mod.push()
+    except sync_mod.SyncNotConfigured as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/sync/export")
+def sync_export(include_synced: bool = Query(True)):
+    """Derselbe Payload als Datei — für den Erstimport oder wenn die Zentrale
+    vom Messort aus nicht erreichbar ist."""
+    return sync_mod.build_payload(include_synced=include_synced)
 
 
 # ------------------------------------------------------------ SNMP

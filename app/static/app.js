@@ -776,6 +776,39 @@ async function loadVerwaltung() {
     ? "gespeichert — leer lassen = unverändert"
     : "z.B. private";
   $("#setTemplate").value = settings.snmp_descr_template || "";
+
+  $("#setMonitorUrl").value = settings.monitor_url || "";
+  $("#setMonitorSource").value = settings.monitor_source || "";
+  // Token wird nie im Klartext geliefert — leer lassen = unverändert
+  $("#setMonitorToken").value = "";
+  $("#setMonitorToken").placeholder = settings.monitor_token_set === "1"
+    ? "gespeichert — leer lassen = unverändert"
+    : "Token aus der Zentrale";
+  $("#setSyncEnabled").checked = settings.sync_enabled === "1";
+  renderSyncStatus();
+}
+
+async function renderSyncStatus() {
+  const box = $("#syncStatus");
+  try {
+    const st = await api("/api/sync/status");
+    if (!st.configured) {
+      box.textContent = "Nicht eingerichtet — Adresse, Testername und Token eintragen.";
+      return;
+    }
+    const parts = [];
+    parts.push(st.pending > 0
+      ? `⟳ ${st.pending} Messung(en) nicht übertragen`
+      : "✓ alles übertragen");
+    if (st.last_sync_at) {
+      parts.push(`zuletzt ${new Date(st.last_sync_at * 1000).toLocaleString("de-DE")}`);
+    }
+    if (!st.enabled) parts.push("Automatik aus");
+    if (st.last_error) parts.push(`⚠ ${st.last_error}`);
+    box.textContent = parts.join(" · ");
+  } catch (e) {
+    box.textContent = `Status nicht abrufbar: ${e.message}`;
+  }
 }
 
 function renderRoomAdmin() {
@@ -850,6 +883,43 @@ $("#saveSettings").addEventListener("click", async () => {
   });
   $("#settingsStatus").textContent = "✓ gespeichert";
   setTimeout(() => ($("#settingsStatus").textContent = ""), 2000);
+});
+
+$("#saveMonitor").addEventListener("click", async () => {
+  await api("/api/settings", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      monitor_url: $("#setMonitorUrl").value.trim(),
+      monitor_source: $("#setMonitorSource").value.trim(),
+      monitor_token: $("#setMonitorToken").value,
+      sync_enabled: $("#setSyncEnabled").checked ? "1" : "0",
+    }),
+  });
+  $("#monitorStatus").textContent = "✓ gespeichert";
+  setTimeout(() => ($("#monitorStatus").textContent = ""), 2000);
+  loadVerwaltung();
+});
+
+$("#testMonitor").addEventListener("click", async () => {
+  $("#monitorStatus").textContent = "…";
+  try {
+    const res = await api("/api/sync/test", { method: "POST" });
+    $("#monitorStatus").textContent = res.ok
+      ? `✓ verbunden als "${res.source}"`
+      : `Fehler: ${res.error}`;
+  } catch (e) { $("#monitorStatus").textContent = `Fehler: ${e.message}`; }
+});
+
+$("#syncNow").addEventListener("click", async () => {
+  $("#monitorStatus").textContent = "übertrage…";
+  try {
+    const res = await api("/api/sync/now", { method: "POST" });
+    $("#monitorStatus").textContent = res.ok
+      ? `✓ ${res.summary}` + (res.warnings.length ? ` (${res.warnings.length} Hinweis(e))` : "")
+      : `Fehler: ${res.error}`;
+    if (res.warnings && res.warnings.length) console.warn("Sync-Hinweise:", res.warnings);
+  } catch (e) { $("#monitorStatus").textContent = `Fehler: ${e.message}`; }
+  renderSyncStatus();
 });
 
 $("#restoreFile").addEventListener("change", async (ev) => {

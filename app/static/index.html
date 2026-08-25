@@ -246,6 +246,27 @@
           <span id="settingsStatus" class="run-status"></span>
         </article>
 
+        <article class="card">
+          <div class="card-head">NETZWERKMONITOR</div>
+          <div id="syncStatus" class="snmp-info">–</div>
+          <label class="setting-label">Adresse der Zentrale</label>
+          <input id="setMonitorUrl" placeholder="https://pmon.hoetten.online">
+          <label class="setting-label">Testername (in der Zentrale angelegt)</label>
+          <input id="setMonitorSource" placeholder="z.B. netbook-tester">
+          <label class="setting-label">Token</label>
+          <input id="setMonitorToken" type="password" placeholder="Token aus der Zentrale">
+          <label class="check-row" style="margin-top:8px">
+            <input type="checkbox" id="setSyncEnabled"> automatisch nach jeder Messung übertragen
+          </label>
+          <div class="db-actions" style="margin-top:10px">
+            <button id="saveMonitor" class="btn-secondary">SPEICHERN</button>
+            <button id="testMonitor" class="btn-inline">VERBINDUNG TESTEN</button>
+            <button id="syncNow" class="btn-inline">JETZT ÜBERTRAGEN</button>
+            <a href="/api/sync/export" class="btn-inline" download="netdiag-export.json">EXPORT (JSON)</a>
+          </div>
+          <span id="monitorStatus" class="run-status"></span>
+        </article>
+
         <article class="card card-wide">
           <div class="card-head">DATENBANK</div>
           <div class="db-actions">
