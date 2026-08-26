@@ -22,7 +22,7 @@ from app.collectors.snmp import (resolve_ifindex, get_current_alias, set_port_de
 from app.export_xlsx import export_xlsx, COLUMNS, DEFAULT_COLUMNS
 from app import sync as sync_mod
 
-APP_VERSION = "3.1.0"
+APP_VERSION = "3.1.1"
 
 app = FastAPI(title="netdiag", version=APP_VERSION,
               description="Lokaler Netzwerk-Port-Tester + Kabelkataster")
@@ -30,6 +30,21 @@ init_db()
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.middleware("http")
+async def no_store_api(request, call_next):
+    """Messergebnisse duerfen nie aus dem Browser-Cache kommen.
+
+    /api/autotest ist ein GET mit immer gleicher URL. Ohne Cache-Header darf ein
+    Browser die Antwort heuristisch wiederverwenden -- dann zeigt der Tester nach
+    dem Umstecken die Werte der vorherigen Dose an.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.get("/")

@@ -3,9 +3,34 @@
 Der Parser versteht beide lldpcli-JSON-Varianten:
 - "json0": alles Listen von Dicts, Blattwerte als {"value": ...}
 - "json":  verschachtelte Dicts, chassis nach Switch-Namen gekeyt
+
+Wichtig fuer den Autotest: lldpd haelt einen einmal gelernten Nachbarn bis zum
+Ablauf seiner TTL (typisch 120 s) vor. Steckt der Tester in einer anderen Dose,
+liefert `lldpcli` also weiter den ALTEN Switch/Port, bis ein neues LLDPDU
+eintrifft (der Sende-Intervall der Switche ist typisch 30 s). Deshalb wird das
+Alter jedes Nachbarn mitgelesen und alles ueber LLDP_STALE_AFTER als `stale`
+markiert -- der Aufrufer darf einen solchen Nachbarn nicht als "aktueller Port"
+verwenden.
 """
 import json
+import re
 import subprocess
+
+#: Ab diesem Alter (Sekunden) gilt ein LLDP-Nachbar als nicht mehr frisch.
+#: Zwei Sende-Intervalle (2x30 s) Reserve, damit ein einzelnes verlorenes
+#: LLDPDU nicht sofort einen gueltigen Nachbarn verwirft.
+LLDP_STALE_AFTER = 60
+
+
+def parse_age(text) -> int | None:
+    """lldpcli-Alter ("0 day, 00:01:20") in Sekunden umrechnen."""
+    if not isinstance(text, str):
+        return None
+    m = re.search(r"(?:(\d+)\s*day[s]?,\s*)?(\d+):(\d{2}):(\d{2})", text)
+    if not m:
+        return None
+    days, h, mi, sec = m.groups()
+    return int(days or 0) * 86400 + int(h) * 3600 + int(mi) * 60 + int(sec)
 
 
 def _first(x):
@@ -73,7 +98,12 @@ def parse_lldp_json(data: dict) -> list[dict]:
         if mgmt_ip is None and isinstance(mgmt, list) and mgmt:
             mgmt_ip = _val(mgmt[0])
 
+        age_seconds = parse_age(_val(entry.get("age")))
+
         neighbors.append({
+            "age": _val(entry.get("age")),
+            "age_seconds": age_seconds,
+            "stale": age_seconds is not None and age_seconds > LLDP_STALE_AFTER,
             "switch_name": name,
             "switch_mgmt_ip": mgmt_ip,
             "port_id": _val(port.get("id")) if isinstance(port, dict) else None,
@@ -84,7 +114,8 @@ def parse_lldp_json(data: dict) -> list[dict]:
 
 
 def get_lldp_neighbors(interface: str) -> dict:
-    result = {"interface": interface, "found": False, "neighbors": [], "error": None}
+    result = {"interface": interface, "found": False, "stale": False,
+              "neighbors": [], "error": None}
     try:
         out = subprocess.run(
             ["lldpcli", "-f", "json0", "show", "neighbors", "details", "ports", interface],
@@ -99,6 +130,8 @@ def get_lldp_neighbors(interface: str) -> dict:
         data = json.loads(out.stdout or "{}")
         result["neighbors"] = parse_lldp_json(data)
         result["found"] = len(result["neighbors"]) > 0
+        result["stale"] = bool(result["neighbors"]) and all(
+            n.get("stale") for n in result["neighbors"])
 
     except FileNotFoundError:
         result["error"] = "lldpd/lldpcli nicht installiert (siehe scripts/install.sh)"

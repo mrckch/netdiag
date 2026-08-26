@@ -1,4 +1,4 @@
-from app.collectors.lldp import parse_lldp_json
+from app.collectors.lldp import LLDP_STALE_AFTER, parse_age, parse_lldp_json
 
 # lldpcli -f json0: alles Listen, Blattwerte als {"value": ...}
 JSON0 = {
@@ -63,3 +63,39 @@ def test_parse_empty():
     assert parse_lldp_json({}) == []
     assert parse_lldp_json({"lldp": {}}) == []
     assert parse_lldp_json({"lldp": [{}]}) == []
+
+
+# ------------------------------------------------- Alter / Stale-Erkennung
+
+def test_parse_age():
+    assert parse_age("0 day, 00:00:12") == 12
+    assert parse_age("0 day, 00:02:05") == 125
+    assert parse_age("1 day, 01:00:00") == 90000
+    assert parse_age(None) is None
+    assert parse_age("keine Ahnung") is None
+
+
+def _json0_with_age(age):
+    import copy
+    data = copy.deepcopy(JSON0)
+    data["lldp"][0]["interface"][0]["age"] = age
+    return data
+
+
+def test_frischer_nachbar_ist_nicht_stale():
+    n = parse_lldp_json(_json0_with_age("0 day, 00:00:12"))[0]
+    assert n["age_seconds"] == 12
+    assert n["stale"] is False
+
+
+def test_alter_nachbar_wird_als_stale_markiert():
+    """Nach dem Umstecken haelt lldpd den alten Nachbarn bis zum TTL-Ablauf vor."""
+    n = parse_lldp_json(_json0_with_age(f"0 day, 00:0{LLDP_STALE_AFTER // 60 + 1}:30"))[0]
+    assert n["age_seconds"] > LLDP_STALE_AFTER
+    assert n["stale"] is True
+
+
+def test_ohne_age_kein_stale():
+    n = parse_lldp_json(JSON0)[0]
+    assert n["age_seconds"] is None
+    assert n["stale"] is False

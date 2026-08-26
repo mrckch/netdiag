@@ -81,6 +81,29 @@ erstes LLDP-Paket sendet (Standardintervall oft 30s) — ein Autotest
 direkt nach dem Einstecken kann den Nachbarn verpassen. Bei Bedarf den
 Autotest einfach wiederholen.
 
+### Autotest zeigt nach dem Umstecken noch den alten Switch/Port
+
+`lldpd` merkt sich einen gelernten Nachbarn bis zum Ablauf seiner TTL
+(vom Switch angesagt, typisch **120 s**). Steckt der Tester in einer
+anderen Dose oder gar an einem anderen Switch, liefert `lldpcli` in
+dieser Zeit weiterhin den **vorherigen** Nachbarn — das sieht aus wie ein
+Cache im Tester, kommt aber aus `lldpd`.
+
+netdiag liest deshalb das **Alter** jedes Nachbarn mit und zeigt es in der
+Karte *SWITCH (LLDP/CDP)* unter „Nachbar-Alter". Ist der Nachbar älter als
+60 s (also seit zwei Sendeintervallen nicht mehr aufgefrischt), gilt er als
+veraltet: er wird **nicht** als aktueller Port übernommen (auch nicht für den
+Tab *Port-Aktionen*), sondern nur als Hinweis angezeigt. Lösung: eine halbe
+Minute warten und den Autotest wiederholen — oder, wenn es schneller gehen
+soll, `sudo systemctl restart lldpd` und dann erneut testen.
+
+Passiv gesnifftes **CDP** hat dieses Problem nicht (wird live während des
+Autotests mitgelesen), dafür senden nur Cisco-Geräte CDP.
+
+Die Karten werden vor jedem Lauf geleert, und die API-Antworten sind
+`Cache-Control: no-store` — stehengebliebene Werte aus einem abgebrochenen
+Lauf oder aus dem Browser-Cache kann es also nicht mehr geben.
+
 ### LLDP global aktiv, aber trotzdem kein Nachbar (z. B. D-Link DGS-1210-Serie)
 
 Bei manchen Switches (bestätigt am D-Link DGS-1210-24) reicht der globale

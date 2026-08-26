@@ -12,7 +12,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
 }[c]));
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, opts);
+  // no-store: der Autotest ist ein GET mit immer gleicher URL -- ohne das
+  // koennte der Browser die Antwort der vorherigen Dose wiederverwenden.
+  const res = await fetch(path, { cache: "no-store", ...opts });
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail || detail; } catch {}
@@ -90,6 +92,27 @@ function setBody(cardId, rows) {
   const dds = document.querySelectorAll(`#${cardId} [data-body] dd`);
   rows.forEach((val, i) => { if (dds[i]) dds[i].textContent = val ?? "—"; });
 }
+// Alle Messkarten leeren. Muss VOR jedem Lauf passieren: bricht der Autotest ab
+// (Fehler, Timeout), blieben sonst die Werte der vorherigen Messung stehen und
+// sehen aus wie ein frisches Ergebnis.
+const RESULT_CARDS = ["card-link", "card-lldp", "card-vlan", "card-dhcp",
+                      "card-ping", "card-iperf"];
+
+function clearResults(placeholder = "—") {
+  RESULT_CARDS.forEach((id) => {
+    document.querySelectorAll(`#${id} [data-body] dd`)
+      .forEach((dd) => { dd.textContent = placeholder; });
+    setLed(id, null);
+  });
+  PENDING = null;
+  LAST_SWITCH = null;
+  PA_IFINDEX = null;
+  VLAN_CURRENT = null;
+  ERR_LATEST = null;
+  ERR_BASELINE = null;
+  markUnsaved(false);
+}
+
 function markUnsaved(on) {
   $("#resultGrid").classList.toggle("unsaved", on);
   $("#saveBar").style.display = on ? "block" : "none";
@@ -102,10 +125,12 @@ async function runAutotest() {
   const iface = $("#iface").value;
   const btn = $("#runAutotest");
   btn.disabled = true;
+  clearResults("…");
   $("#runStatus").textContent = `teste ${iface} … (~10s)`;
 
   try {
-    const data = await api(`/api/autotest?interface=${encodeURIComponent(iface)}`);
+    const data = await api(
+      `/api/autotest?interface=${encodeURIComponent(iface)}&_=${Date.now()}`);
     PENDING = { kind: "autotest", result: data };
 
     const link = data.link;
@@ -115,21 +140,33 @@ async function runAutotest() {
     ]);
     setLed("card-link", link.error ? "bad" : (link.link_detected ? "ok" : "warn"));
 
+    // LLDP-Nachbarn ueberleben das Umstecken (lldpd haelt sie bis TTL-Ablauf).
+    // Ein als stale gemeldeter Nachbar zeigt also den VORHERIGEN Port und darf
+    // weder als aktueller Switch gelten noch die Port-Aktionen bewaffnen.
     const neighbor = data.lldp.neighbors?.[0];
-    const cdp = data.sniff?.cdp;
-    const swName = neighbor?.switch_name || cdp?.device_id;
-    const swPort = neighbor?.port_id || cdp?.port_id;
-    const swIp = neighbor?.switch_mgmt_ip || cdp?.mgmt_ip;
+    const fresh = neighbor && !neighbor.stale ? neighbor : null;
+    const cdp = data.sniff?.cdp;   // CDP wird live gesnifft, ist also immer frisch
+    const swName = fresh?.switch_name || cdp?.device_id;
+    const swPort = fresh?.port_id || cdp?.port_id;
+    const swIp = fresh?.switch_mgmt_ip || cdp?.mgmt_ip;
+
+    let swAge = "—";
+    if (swName && cdp?.device_id && !fresh) swAge = "live (CDP)";
+    else if (fresh) swAge = fresh.age_seconds != null ? `${fresh.age_seconds}s` : "frisch";
+
+    let swLabel = swName;
+    if (!swName && neighbor?.stale) {
+      swLabel = `⚠ nur veralteter Nachbar (${neighbor.switch_name || "?"} / ` +
+                `${neighbor.port_id || "?"}, ${neighbor.age_seconds}s alt) — LLDP sendet ` +
+                `alle ~30s, bitte Test in einer halben Minute wiederholen`;
+      swAge = `${neighbor.age_seconds}s — verworfen`;
+    }
     setBody("card-lldp", [
-      swName || (data.lldp.error ? `Fehler: ${data.lldp.error}` : "kein Nachbar erkannt"),
-      swPort || "—", swIp || "—",
+      swLabel || (data.lldp.error ? `Fehler: ${data.lldp.error}` : "kein Nachbar erkannt"),
+      swPort || "—", swIp || "—", swAge,
     ]);
     setLed("card-lldp", swName ? "ok" : "warn");
     LAST_SWITCH = (swIp && swPort) ? { host: swIp, portName: swPort, name: swName } : null;
-    PA_IFINDEX = null;
-    VLAN_CURRENT = null;
-    ERR_LATEST = null;
-    ERR_BASELINE = null;
 
     const sniff = data.sniff;
     setBody("card-vlan", [
